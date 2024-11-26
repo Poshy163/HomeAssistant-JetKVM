@@ -3,7 +3,7 @@
         "step": {
             "user": {
                 "data": {
-                    "Address": "IP Address/Hostname"
+                    "connectionAddress": "IP Address/Hostname"
                 },
                 "description": "Please enter the IP Address/Hostname of your JetKVM.",
                 "title": "JetKVM Integration Setup"
