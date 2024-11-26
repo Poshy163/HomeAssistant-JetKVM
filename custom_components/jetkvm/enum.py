@@ -13,6 +13,7 @@ class JetKVMSensorDescription(SensorEntityDescription):
 SENSOR_DESCRIPTIONS: List[JetKVMSensorDescription] = [
     JetKVMSensorDescription(
         name="IP Address",
+        key="IP_Address",
         entity_name="local_ip_address",
         icon="mdi:ip"
     )
