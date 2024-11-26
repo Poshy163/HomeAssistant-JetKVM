@@ -16,6 +16,6 @@ class SharesightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required("connectionAddress"): str,
         })
 
-        client = JetKVM()
+        # Connection Testing and validation
 
         return self.async_show_form(step_id="user", data_schema=data_schema, errors=errors)
