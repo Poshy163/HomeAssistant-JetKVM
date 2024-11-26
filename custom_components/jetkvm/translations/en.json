@@ -3,20 +3,14 @@
         "step": {
             "user": {
                 "data": {
-                    "client_id": "Client ID",
-                    "client_secret": "Client Secret",
-                    "portfolio_id": "Portfolio ID",
-                    "authorization_code": "Authorization Code",
-                    "use_edge_url": "Use edge API? (Developer account)"
+                    "Address": "IP Address/Hostname"
                 },
-                "description": "Please enter your Sharesight API credentials.",
-                "title": "Sharesight Integration Setup"
+                "description": "Please enter the IP Address/Hostname of your JetKVM.",
+                "title": "JetKVM Integration Setup"
             }
         },
         "error": {
-            "auth": "Authentication error, please check your credentials.",
-            "auth_edge": "Authentication error. Did you accidentally select edge profile?",
-            "other": "Something has gone very wrong if you can see this, report to the the github with the logs"
+            "auth": "Authentication error, please check your credentials."
         }
     }
 }
