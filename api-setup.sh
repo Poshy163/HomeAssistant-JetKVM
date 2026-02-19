@@ -94,35 +94,78 @@ sleep 1
 # =====================================================================
 # Detect httpd binary
 # =====================================================================
+echo "Detecting httpd..."
 HTTPD_CMD=""
+
+# Method 1: httpd directly in PATH
 if command -v httpd >/dev/null 2>&1; then
     HTTPD_CMD="httpd"
-elif busybox --list 2>/dev/null | grep -qx "httpd"; then
+    echo "  Found: httpd (in PATH)"
+fi
+
+# Method 2: busybox httpd applet (check via --list)
+if [ -z "$HTTPD_CMD" ] && busybox --list 2>/dev/null | grep -qx "httpd"; then
     HTTPD_CMD="busybox httpd"
-elif [ -x /usr/sbin/httpd ]; then
+    echo "  Found: busybox httpd (via --list)"
+fi
+
+# Method 3: busybox httpd applet (check via --list-full)
+if [ -z "$HTTPD_CMD" ] && busybox --list-full 2>/dev/null | grep -q "httpd"; then
+    HTTPD_CMD="busybox httpd"
+    echo "  Found: busybox httpd (via --list-full)"
+fi
+
+# Method 4: just try running busybox httpd --help (exit 0 or 1 both mean it exists)
+if [ -z "$HTTPD_CMD" ]; then
+    busybox httpd --help >/dev/null 2>&1
+    # busybox applets return 0 or 1 for --help, but 127/not-found gives different result
+    if [ $? -ne 127 ]; then
+        HTTPD_CMD="busybox httpd"
+        echo "  Found: busybox httpd (via --help probe)"
+    fi
+fi
+
+# Method 5: check common paths directly
+if [ -z "$HTTPD_CMD" ] && [ -x /usr/sbin/httpd ]; then
     HTTPD_CMD="/usr/sbin/httpd"
-elif [ -x /usr/bin/httpd ]; then
+    echo "  Found: /usr/sbin/httpd"
+fi
+if [ -z "$HTTPD_CMD" ] && [ -x /usr/bin/httpd ]; then
     HTTPD_CMD="/usr/bin/httpd"
+    echo "  Found: /usr/bin/httpd"
+fi
+
+# Method 6: find any httpd binary on the system
+if [ -z "$HTTPD_CMD" ]; then
+    FOUND_HTTPD=$(find /usr/sbin /usr/bin /sbin /bin -name "httpd" -type f 2>/dev/null | head -1)
+    if [ -n "$FOUND_HTTPD" ] && [ -x "$FOUND_HTTPD" ]; then
+        HTTPD_CMD="$FOUND_HTTPD"
+        echo "  Found: $FOUND_HTTPD (via find)"
+    fi
 fi
 
 if [ -z "$HTTPD_CMD" ]; then
     echo ""
     echo "ERROR: Cannot find httpd (BusyBox httpd) on this device."
     echo ""
-    echo "Debug info:"
-    echo "  busybox --list 2>&1 | grep httpd:"
-    busybox --list 2>&1 | grep httpd
-    echo "  which httpd: $(which httpd 2>&1)"
-    echo "  busybox httpd --help:"
-    busybox httpd --help 2>&1 | head -3
+    echo "Diagnostic info:"
+    echo "  which httpd:         $(which httpd 2>&1)"
+    echo "  which busybox:       $(which busybox 2>&1)"
+    echo "  busybox --list httpd:"
+    busybox --list 2>&1 | grep -i httpd || echo "    (none)"
+    echo "  busybox --list-full httpd:"
+    busybox --list-full 2>&1 | grep -i httpd || echo "    (none)"
+    echo "  busybox httpd test:"
+    busybox httpd 2>&1 || echo "    (failed)"
+    echo "  ls /usr/sbin/httpd:  $(ls -la /usr/sbin/httpd 2>&1)"
     echo ""
-    echo "If BusyBox httpd is available as an applet, try:"
-    echo "  ln -s /bin/busybox /usr/sbin/httpd"
+    echo "Workaround — create a symlink and re-run:"
+    echo "  ln -sf $(which busybox 2>/dev/null || echo /bin/busybox) /usr/sbin/httpd"
     echo "  sh /tmp/api-setup.sh"
     exit 1
 fi
 
-echo "Found httpd: $HTTPD_CMD"
+echo "Using httpd command: $HTTPD_CMD"
 
 # =====================================================================
 # Create directory structure
