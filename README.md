@@ -34,7 +34,7 @@ API server is running (PID 1234)
 **Verify it works** — from your PC browser, open:
 
 ```
-http://<your-jetkvm-ip>:8800/cgi-bin/temperature
+http://<your-jetkvm-ip>:8800/temperature
 ```
 
 You should see:
@@ -68,21 +68,21 @@ Done — a **SoC Temperature** sensor will appear under the new JetKVM device.
 ```
 ┌──────────────────┐         ┌──────────────────────────┐
 │  Home Assistant   │  HTTP   │       JetKVM device      │
-│                   │ ──────► │  BusyBox httpd :8800     │
-│  polls every 60s  │ ◄────── │  /cgi-bin/temperature    │
+│                   │ ──────► │  nc-based server :8800   │
+│  polls every 60s  │ ◄────── │  /temperature            │
 │                   │  JSON   │  reads thermal_zone0     │
 └──────────────────┘         └──────────────────────────┘
 ```
 
-`api-setup.sh` installs a BusyBox `httpd` server on port **8800** with CGI scripts that read `/sys/class/thermal/thermal_zone0/temp`. The HA integration polls these endpoints every 60 seconds.
+`api-setup.sh` installs a netcat-based HTTP server on port **8800** with a handler script that reads `/sys/class/thermal/thermal_zone0/temp`. The HA integration polls these endpoints every 60 seconds.
 
 ## API Endpoints (port 8800 on the JetKVM)
 
 | Endpoint | Response |
 |---|---|
-| `/cgi-bin/health` | `{"status":"ok"}` |
-| `/cgi-bin/temperature` | `{"temperature":47.2}` |
-| `/cgi-bin/device_info` | `{"deviceModel":"JetKVM","hostname":"...","temperature":47.2,...}` |
+| `/health` | `{"status":"ok"}` |
+| `/temperature` | `{"temperature":47.2}` |
+| `/device_info` | `{"deviceModel":"JetKVM","hostname":"...","temperature":47.2,...}` |
 
 ## Requirements
 

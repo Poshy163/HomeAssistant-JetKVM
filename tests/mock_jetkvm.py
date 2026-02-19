@@ -26,13 +26,13 @@ def get_temperature():
 
 
 async def cgi_health(request: web.Request) -> web.Response:
-    print("[CGI] /cgi-bin/health")
+    print("[API] /health")
     return web.json_response({"status": "ok"})
 
 
 async def cgi_temperature(request: web.Request) -> web.Response:
     temp = get_temperature()
-    print(f"[CGI] /cgi-bin/temperature -> {temp}")
+    print(f"[API] /temperature -> {temp}")
     return web.json_response({"temperature": temp})
 
 
@@ -47,15 +47,15 @@ async def cgi_device_info(request: web.Request) -> web.Response:
         "mem_total_kb": 262144,
         "mem_available_kb": 131072,
     }
-    print(f"[CGI] /cgi-bin/device_info -> temp={temp}")
+    print(f"[API] /device_info -> temp={temp}")
     return web.json_response(info)
 
 
 def main():
     app = web.Application()
-    app.router.add_get("/cgi-bin/health", cgi_health)
-    app.router.add_get("/cgi-bin/temperature", cgi_temperature)
-    app.router.add_get("/cgi-bin/device_info", cgi_device_info)
+    app.router.add_get("/health", cgi_health)
+    app.router.add_get("/temperature", cgi_temperature)
+    app.router.add_get("/device_info", cgi_device_info)
 
     print("=" * 55)
     print("  Mock JetKVM API Server")
@@ -63,9 +63,9 @@ def main():
     print()
     print(f"  Listening on http://127.0.0.1:{PORT}")
     print()
-    print(f"  http://127.0.0.1:{PORT}/cgi-bin/health")
-    print(f"  http://127.0.0.1:{PORT}/cgi-bin/temperature")
-    print(f"  http://127.0.0.1:{PORT}/cgi-bin/device_info")
+    print(f"  http://127.0.0.1:{PORT}/health")
+    print(f"  http://127.0.0.1:{PORT}/temperature")
+    print(f"  http://127.0.0.1:{PORT}/device_info")
     print()
     print("=" * 55)
     print()

@@ -3,9 +3,9 @@
 Communicates with the lightweight BusyBox httpd server installed on the
 JetKVM via api-setup.sh.  The server runs on port 8800 and exposes:
 
-    GET /cgi-bin/health       -> {"status": "ok"}
-    GET /cgi-bin/temperature  -> {"temperature": 45.2}
-    GET /cgi-bin/device_info  -> {"deviceModel": "JetKVM", "hostname": "...", ...}
+    GET /health       -> {"status": "ok"}
+    GET /temperature  -> {"temperature": 45.2}
+    GET /device_info  -> {"deviceModel": "JetKVM", "hostname": "...", ...}
 """
 import logging
 
@@ -14,9 +14,9 @@ import aiohttp
 _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_PORT = 8800
-HEALTH_PATH = "/cgi-bin/health"
-TEMPERATURE_PATH = "/cgi-bin/temperature"
-DEVICE_INFO_PATH = "/cgi-bin/device_info"
+HEALTH_PATH = "/health"
+TEMPERATURE_PATH = "/temperature"
+DEVICE_INFO_PATH = "/device_info"
 
 
 class JetKVMError(Exception):
