@@ -5,12 +5,12 @@
                 "data": {
                     "host": "IP Address / Hostname"
                 },
-                "description": "Enter the IP address of your JetKVM device.\n\nYou must first SSH into the JetKVM and run api-setup.sh to install the API server.",
+                "description": "Enter the IP address of your JetKVM device.\n\nYou must first SSH into the JetKVM and run the setup script:\nwget --no-check-certificate -O /tmp/api-setup.sh https://raw.githubusercontent.com/Poshy163/HomeAssistant-JetKVM/main/api-setup.sh && sh /tmp/api-setup.sh",
                 "title": "JetKVM Integration Setup"
             }
         },
         "error": {
-            "cannot_connect": "Cannot connect to the JetKVM API. Have you run api-setup.sh on the device?",
+            "cannot_connect": "Cannot connect to the JetKVM API. Please SSH into your JetKVM and run: wget --no-check-certificate -O /tmp/api-setup.sh https://raw.githubusercontent.com/Poshy163/HomeAssistant-JetKVM/main/api-setup.sh && sh /tmp/api-setup.sh",
             "unknown": "An unexpected error occurred."
         },
         "abort": {

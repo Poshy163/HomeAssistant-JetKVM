@@ -1,15 +1,15 @@
 """API client for JetKVM devices.
 
-Communicates with the lightweight nc-based HTTP server installed on the
-JetKVM via api-setup.sh.  The server runs on port 8800 and exposes:
+Communicates with the BusyBox httpd server installed on the JetKVM
+via api-setup.sh.  The server runs on port 8800 and exposes CGI
+endpoints:
 
-    GET /health       -> {"status": "ok"}
-    GET /temperature  -> {"temperature": 45.2}
-    GET /device_info  -> {"deviceModel": "JetKVM", "hostname": "...", ...}
+    GET /cgi-bin/health       -> {"status": "ok"}
+    GET /cgi-bin/temperature  -> {"temperature": 45.2}
+    GET /cgi-bin/device_info  -> {"deviceModel": "JetKVM", "hostname": "...", ...}
 
-NOTE: The nc-based server handles one request at a time, so we must
-not fire concurrent requests.  Each call waits for the previous one
-to complete before starting.
+The httpd server handles concurrent connections and is supervised by
+a watchdog script that auto-restarts it if it crashes.
 """
 import asyncio
 import logging
@@ -19,12 +19,10 @@ import aiohttp
 _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_PORT = 8800
-HEALTH_PATH = "/health"
-TEMPERATURE_PATH = "/temperature"
-DEVICE_INFO_PATH = "/device_info"
+HEALTH_PATH = "/cgi-bin/health"
+TEMPERATURE_PATH = "/cgi-bin/temperature"
+DEVICE_INFO_PATH = "/cgi-bin/device_info"
 
-# nc needs a moment between requests to re-listen
-_REQUEST_DELAY = 0.5
 _MAX_RETRIES = 3
 
 
@@ -65,8 +63,7 @@ class JetKVMClient:
     async def _get_json(self, path: str) -> dict:
         """HTTP GET and parse JSON response.
 
-        Retries up to _MAX_RETRIES times with a small delay to accommodate
-        the nc-based server which can only serve one request at a time.
+        Retries up to _MAX_RETRIES times with a small delay between attempts.
         """
         session = await self._get_session()
         url = f"{self._base_url}{path}"
@@ -92,7 +89,7 @@ class JetKVMClient:
                     "JetKVM API attempt %d failed for %s: %s", attempt, url, err
                 )
                 if attempt < _MAX_RETRIES:
-                    await asyncio.sleep(_REQUEST_DELAY)
+                    await asyncio.sleep(1.0)
 
         # All retries exhausted
         raise JetKVMConnectionError(
@@ -103,9 +100,18 @@ class JetKVMClient:
     # -- public API ----------------------------------------------------------
 
     async def check_health(self) -> bool:
-        """Return True if the API server is reachable."""
+        """Return True if the API server is reachable and healthy."""
         data = await self._get_json(HEALTH_PATH)
-        return data.get("status") == "ok"
+        if data.get("status") == "ok":
+            return True
+        # Old (pre-CGI) server returns {"error":"not found"} for /cgi-bin/ paths
+        if data.get("error") == "not found":
+            _LOGGER.warning(
+                "JetKVM API returned 'not found' for %s — the device may be "
+                "running an older api-setup.sh. Please re-run the setup script.",
+                HEALTH_PATH,
+            )
+        return False
 
     async def get_temperature(self) -> float | None:
         """Return the SoC temperature in °C, or None."""
@@ -127,6 +133,16 @@ class JetKVMClient:
         return await self.get_device_info()
 
     async def validate_connection(self) -> dict:
-        """Validate connectivity.  Returns device_info on success."""
-        return await self.get_device_info()
+        """Validate connectivity.  Returns device_info on success.
+
+        Raises JetKVMConnectionError if the device is unreachable or
+        running an outdated api-setup.sh.
+        """
+        data = await self.get_device_info()
+        if "error" in data or "deviceModel" not in data:
+            raise JetKVMConnectionError(
+                f"JetKVM API at {self._base_url} returned unexpected data: {data}. "
+                "Please re-run the setup script on your JetKVM device."
+            )
+        return data
 
