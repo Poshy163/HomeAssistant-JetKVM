@@ -35,6 +35,9 @@ class JetKVMCoordinator(DataUpdateCoordinator):
             if "temperature" in data:
                 result["temperature"] = data["temperature"]
 
+            if "uptime_seconds" in data:
+                result["uptime_seconds"] = data["uptime_seconds"]
+
             return result
 
         except JetKVMError as err:

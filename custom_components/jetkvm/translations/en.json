@@ -16,5 +16,15 @@
         "abort": {
             "already_configured": "This JetKVM device is already configured."
         }
+    },
+    "entity": {
+        "sensor": {
+            "soc_temperature": {
+                "name": "SoC temperature"
+            },
+            "uptime": {
+                "name": "Uptime"
+            }
+        }
     }
 }
