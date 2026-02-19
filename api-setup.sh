@@ -92,6 +92,39 @@ rm -f "${BASE_DIR}/server.sh" "${BASE_DIR}/handler.sh" "${BASE_DIR}/fifo" "${BAS
 sleep 1
 
 # =====================================================================
+# Detect httpd binary
+# =====================================================================
+HTTPD_CMD=""
+if command -v httpd >/dev/null 2>&1; then
+    HTTPD_CMD="httpd"
+elif busybox --list 2>/dev/null | grep -qx "httpd"; then
+    HTTPD_CMD="busybox httpd"
+elif [ -x /usr/sbin/httpd ]; then
+    HTTPD_CMD="/usr/sbin/httpd"
+elif [ -x /usr/bin/httpd ]; then
+    HTTPD_CMD="/usr/bin/httpd"
+fi
+
+if [ -z "$HTTPD_CMD" ]; then
+    echo ""
+    echo "ERROR: Cannot find httpd (BusyBox httpd) on this device."
+    echo ""
+    echo "Debug info:"
+    echo "  busybox --list 2>&1 | grep httpd:"
+    busybox --list 2>&1 | grep httpd
+    echo "  which httpd: $(which httpd 2>&1)"
+    echo "  busybox httpd --help:"
+    busybox httpd --help 2>&1 | head -3
+    echo ""
+    echo "If BusyBox httpd is available as an applet, try:"
+    echo "  ln -s /bin/busybox /usr/sbin/httpd"
+    echo "  sh /tmp/api-setup.sh"
+    exit 1
+fi
+
+echo "Found httpd: $HTTPD_CMD"
+
+# =====================================================================
 # Create directory structure
 # =====================================================================
 mkdir -p "$CGI_DIR"
@@ -182,15 +215,25 @@ chmod +x "$CGI_DIR/device_info"
 # Watchdog script — starts httpd and restarts it if it ever dies.
 # Fully detached from the terminal so it survives SSH disconnect.
 # =====================================================================
+
+# Write a config file with detected values (expanded at install time)
+cat > "${BASE_DIR}/config.sh" << CONF
+HTTPD_CMD="${HTTPD_CMD}"
+API_PORT=${API_PORT}
+BASE_DIR="${BASE_DIR}"
+WWW_DIR="${WWW_DIR}"
+PID_FILE="${PID_FILE}"
+LOG_FILE="${LOG_FILE}"
+CONF
+
+# Write watchdog script (NO expansion — single-quoted heredoc)
 cat << 'WATCHDOG' > "$WATCHDOG_SCRIPT"
 #!/bin/sh
 # Watchdog for BusyBox httpd — restarts automatically if it exits.
 
-API_PORT=8800
-BASE_DIR="/opt/ha-api"
-WWW_DIR="${BASE_DIR}/www"
-PID_FILE="${BASE_DIR}/watchdog.pid"
-LOG_FILE="${BASE_DIR}/server.log"
+# Load config written at install time
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "${SCRIPT_DIR}/config.sh"
 
 log() {
     # Keep log file under 50KB
@@ -218,7 +261,7 @@ cleanup() {
 }
 trap cleanup INT TERM HUP
 
-log "Watchdog starting (PID $$)"
+log "Watchdog starting (PID $$) — using: $HTTPD_CMD"
 
 RESTART_COUNT=0
 MAX_FAST_RESTARTS=10
@@ -227,11 +270,11 @@ LAST_RESTART_TIME=0
 
 while true; do
     # Start httpd in foreground mode (-f) so we can monitor its PID
-    httpd -f -p "$API_PORT" -h "$WWW_DIR" &
+    $HTTPD_CMD -f -p "$API_PORT" -h "$WWW_DIR" &
     HTTPD_PID=$!
 
     # Track timing for rapid-restart detection
-    NOW=$(date +%s 2>/dev/null || cat /proc/uptime | awk '{printf "%d", $1}')
+    NOW=$(date +%s 2>/dev/null || awk '{printf "%d", $1}' /proc/uptime)
     log "httpd started (PID $HTTPD_PID)"
 
     ELAPSED=$((NOW - LAST_RESTART_TIME))
@@ -356,10 +399,11 @@ else
     echo "WARNING: Server may not have started correctly."
     echo ""
     echo "Debug info:"
-    echo "  Log file:     cat ${LOG_FILE}"
-    echo "  Check port:   netstat -tlnp | grep ${API_PORT}"
-    echo "  httpd path:   $(which httpd 2>&1)"
-    echo "  Manual start: httpd -f -p ${API_PORT} -h ${WWW_DIR}"
+    echo "  httpd command: $HTTPD_CMD"
+    echo "  Log file:      cat ${LOG_FILE}"
+    echo "  Config file:   cat ${BASE_DIR}/config.sh"
+    echo "  Check port:    netstat -tlnp | grep ${API_PORT}"
+    echo "  Manual start:  $HTTPD_CMD -f -p ${API_PORT} -h ${WWW_DIR}"
     echo ""
     if [ -f "$LOG_FILE" ]; then
         echo "Recent log:"
