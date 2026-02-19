@@ -57,15 +57,19 @@ class JetKVMClient:
         """HTTP GET and parse JSON response."""
         session = await self._get_session()
         url = f"{self._base_url}{path}"
+        _LOGGER.debug("JetKVM API request: GET %s", url)
         try:
             async with session.get(
                 url, timeout=aiohttp.ClientTimeout(total=10)
             ) as resp:
+                _LOGGER.debug("JetKVM API response: %s %s", resp.status, url)
                 if resp.status != 200:
                     raise JetKVMError(
                         f"HTTP {resp.status} from {url}"
                     )
-                return await resp.json(content_type=None)
+                data = await resp.json(content_type=None)
+                _LOGGER.debug("JetKVM API data: %s", data)
+                return data
         except aiohttp.ClientConnectorError as err:
             raise JetKVMConnectionError(
                 f"Cannot connect to JetKVM API at {url} – "

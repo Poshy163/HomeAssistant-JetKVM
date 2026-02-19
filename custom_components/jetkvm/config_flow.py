@@ -26,10 +26,12 @@ class JetKVMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             host = user_input["host"]
+            _LOGGER.debug("JetKVM setup: attempting connection to %s", host)
 
             client = JetKVMClient(host=host)
             try:
                 device_info = await client.validate_connection()
+                _LOGGER.debug("JetKVM setup: connection successful, device_info=%s", device_info)
                 await client.close()
 
                 # Use hostname or ip as unique ID
@@ -40,10 +42,11 @@ class JetKVMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 title = f"JetKVM ({host})"
                 return self.async_create_entry(title=title, data=user_input)
 
-            except JetKVMConnectionError:
+            except JetKVMConnectionError as err:
+                _LOGGER.error("JetKVM setup: connection failed: %s", err)
                 errors["base"] = "cannot_connect"
-            except Exception:
-                _LOGGER.exception("Unexpected error during JetKVM setup")
+            except Exception as err:
+                _LOGGER.exception("JetKVM setup: unexpected error: %s", err)
                 errors["base"] = "unknown"
             finally:
                 await client.close()
