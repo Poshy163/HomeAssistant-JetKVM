@@ -3,14 +3,18 @@
         "step": {
             "user": {
                 "data": {
-                    "connectionAddress": "IP Address/Hostname"
+                    "host": "IP Address / Hostname"
                 },
-                "description": "Please enter the IP Address/Hostname of your JetKVM.",
+                "description": "Enter the IP address of your JetKVM device.\n\nYou must first SSH into the JetKVM and run api-setup.sh to install the API server.",
                 "title": "JetKVM Integration Setup"
             }
         },
         "error": {
-            "auth": "Authentication error, please check your credentials."
+            "cannot_connect": "Cannot connect to the JetKVM API on port 8800. Have you run api-setup.sh on the device?",
+            "unknown": "An unexpected error occurred."
+        },
+        "abort": {
+            "already_configured": "This JetKVM device is already configured."
         }
     }
 }

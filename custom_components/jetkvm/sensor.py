@@ -1,91 +1,93 @@
-from homeassistant.const import CURRENCY_DOLLAR
+"""Sensor platform for JetKVM integration."""
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity import Entity
-from .const import DOMAIN
-import logging
-from .enum import SENSOR_DESCRIPTIONS
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from .const import DOMAIN
+from .enum import SENSOR_DESCRIPTIONS, JetKVMSensorDescription
 from .coordinator import JetKVMCoordinator
-from homeassistant.helpers.event import async_track_time_interval
+
+import logging
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
-MARKET_SENSORS = []
-CASH_SENSORS = []
-
 
 async def async_setup_entry(hass, entry, async_add_entities):
+    """Set up JetKVM sensors from a config entry."""
     data = hass.data[DOMAIN][entry.entry_id]
-
     coordinator: JetKVMCoordinator = data["coordinator"]
 
     sensors = []
-
-    for sensor in SENSOR_DESCRIPTIONS:
-        sensors.append(SharesightSensor(sensor, entry, coordinator))
+    for sensor_desc in SENSOR_DESCRIPTIONS:
+        sensors.append(JetKVMSensor(sensor_desc, entry, coordinator))
 
     async_add_entities(sensors, True)
 
 
-class SharesightSensor(CoordinatorEntity, Entity):
-    def __init__(self, sensor, entry, coordinator):
+class JetKVMSensor(CoordinatorEntity, Entity):
+    """Representation of a JetKVM sensor."""
+
+    def __init__(
+        self,
+        description: JetKVMSensorDescription,
+        entry,
+        coordinator: JetKVMCoordinator,
+    ):
+        """Initialize the sensor."""
         super().__init__(coordinator)
-        self._state_class = sensor.state_class
         self._coordinator = coordinator
-        self._entity_category = sensor.entity_category
-        self._name = str(sensor.name)
-        self._extension_key = sensor.extension_key
-        self._suggested_display_precision = sensor.suggested_display_precision
-        self._key = sensor.key
-        self._icon = sensor.icon
         self._entry = entry
-        self._device_class = sensor.device_class
-        self._sub_key = sensor.sub_key
-        self._unique_id = sensor.entity_name
+        self._description = description
+        self._key = description.key
+        self._attr_name = description.name
+        self._attr_icon = description.icon
+        self._attr_device_class = description.device_class
+        self._attr_state_class = description.state_class
+        self._attr_native_unit_of_measurement = description.native_unit_of_measurement
+        self._attr_suggested_display_precision = description.suggested_display_precision
+        self._attr_entity_category = description.entity_category
+        self._attr_unique_id = f"{entry.entry_id}_{description.entity_name}"
+        self._state = None
 
     @callback
     def _handle_coordinator_update(self):
+        """Handle updated data from the coordinator."""
         try:
-            self._state = self._coordinator.data[self._key]
-
-        except (KeyError, IndexError) as e:
-            _LOGGER.error(f"Error accessing data for key '{self._key}': {e}: Defaulting to None")
+            if self._coordinator.data is not None:
+                self._state = self._coordinator.data.get(self._key)
+            else:
+                self._state = None
+        except (KeyError, IndexError) as err:
+            _LOGGER.error(
+                "Error accessing data for key '%s': %s. Defaulting to None",
+                self._key,
+                err,
+            )
             self._state = None
         self.async_write_ha_state()
 
     @property
-    def name(self):
-        return self._name
-
-    @property
-    def state(self):
+    def native_value(self):
+        """Return the state of the sensor."""
         return self._state
 
     @property
-    def icon(self):
-        return self._icon
+    def state(self):
+        """Return the state of the sensor."""
+        return self._state
 
     @property
-    def entity_category(self):
-        return self._entity_category
+    def device_info(self) -> DeviceInfo:
+        """Return device information about this JetKVM device."""
+        device_data = self._coordinator.device_info or {}
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            name=f"JetKVM ({self._entry.data.get('host', 'Unknown')})",
+            manufacturer="JetKVM",
+            model=device_data.get("deviceModel", "JetKVM"),
+            sw_version=device_data.get("firmwareVersion"),
+            hw_version=device_data.get("hardwareVersion"),
+            serial_number=device_data.get("serialNumber"),
+        )
 
-    @property
-    def unique_id(self):
-        return self._unique_id
-
-    @property
-    def unit_of_measurement(self):
-        return self._native_unit_of_measurement
-
-    @property
-    def suggested_display_precision(self):
-        return self._suggested_display_precision
-
-    @property
-    def state_class(self):
-        return self._state_class
-
-    @property
-    def device_class(self):
-        return self._device_class

@@ -1,52 +1,44 @@
+"""DataUpdateCoordinator for JetKVM."""
 import logging
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
+    UpdateFailed,
 )
 
 from .const import DOMAIN, SCAN_INTERVAL
+from .client import JetKVMClient, JetKVMError
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def process_value(value, default=None):
-    if value is None or (isinstance(value, str) and value.strip() == ''):
-        return default
-    return value
-
-
-async def safe_get(dictionary, key, default=None):
-    if dictionary is None:
-        return default
-    return await process_value(dictionary.get(key), default)
-
-
-async def safe_calculate(val1, val2):
-    if val1 is None or val2 is None:
-        return None
-    else:
-        return val1 - val2
-
-
 class JetKVMCoordinator(DataUpdateCoordinator):
-    def __init__(self, hass: HomeAssistant, client) -> None:
+    """Coordinator to manage fetching data from JetKVM."""
+
+    def __init__(self, hass: HomeAssistant, client: JetKVMClient) -> None:
+        """Initialize the coordinator."""
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
         self.client = client
+        self.device_info: dict = {}
 
-    async def _async_update_data(self):
+    async def _async_update_data(self) -> dict:
+        """Fetch data from the JetKVM device."""
         try:
-            jsondata = await self.client.getdata()
-            if jsondata is not None:
-                # get data from kvm list
-                kvmdata = {}
-                kvmdata["IP_Address"] = await process_value(jsondata.get("IPAddress"))
+            data = await self.client.get_all_data()
 
-                self.data.update(kvmdata)
-            else:
-                self.data = None
-                return self.data
+            # Store raw response for device registry info
+            self.device_info = data
 
-        except Exception as e:
-            _LOGGER.error(e)
-            self.data = None
-            return self.data
+            # Build the dict the sensors read from
+            result = {}
+
+            if "temperature" in data:
+                result["temperature"] = data["temperature"]
+
+            return result
+
+        except JetKVMError as err:
+            raise UpdateFailed(f"Error communicating with JetKVM: {err}") from err
+        except Exception as err:
+            raise UpdateFailed(f"Unexpected error: {err}") from err
+
