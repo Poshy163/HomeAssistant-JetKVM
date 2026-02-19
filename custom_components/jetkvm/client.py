@@ -1,12 +1,17 @@
 """API client for JetKVM devices.
 
-Communicates with the lightweight BusyBox httpd server installed on the
+Communicates with the lightweight nc-based HTTP server installed on the
 JetKVM via api-setup.sh.  The server runs on port 8800 and exposes:
 
     GET /health       -> {"status": "ok"}
     GET /temperature  -> {"temperature": 45.2}
     GET /device_info  -> {"deviceModel": "JetKVM", "hostname": "...", ...}
+
+NOTE: The nc-based server handles one request at a time, so we must
+not fire concurrent requests.  Each call waits for the previous one
+to complete before starting.
 """
+import asyncio
 import logging
 
 import aiohttp
@@ -17,6 +22,10 @@ DEFAULT_PORT = 8800
 HEALTH_PATH = "/health"
 TEMPERATURE_PATH = "/temperature"
 DEVICE_INFO_PATH = "/device_info"
+
+# nc needs a moment between requests to re-listen
+_REQUEST_DELAY = 0.5
+_MAX_RETRIES = 3
 
 
 class JetKVMError(Exception):
@@ -54,35 +63,42 @@ class JetKVMClient:
     # -- low-level GET -------------------------------------------------------
 
     async def _get_json(self, path: str) -> dict:
-        """HTTP GET and parse JSON response."""
+        """HTTP GET and parse JSON response.
+
+        Retries up to _MAX_RETRIES times with a small delay to accommodate
+        the nc-based server which can only serve one request at a time.
+        """
         session = await self._get_session()
         url = f"{self._base_url}{path}"
-        _LOGGER.debug("JetKVM API request: GET %s", url)
-        try:
-            async with session.get(
-                url, timeout=aiohttp.ClientTimeout(total=10)
-            ) as resp:
-                _LOGGER.debug("JetKVM API response: %s %s", resp.status, url)
-                if resp.status != 200:
-                    raise JetKVMError(
-                        f"HTTP {resp.status} from {url}"
-                    )
-                data = await resp.json(content_type=None)
-                _LOGGER.debug("JetKVM API data: %s", data)
-                return data
-        except aiohttp.ClientConnectorError as err:
-            raise JetKVMConnectionError(
-                f"Cannot connect to JetKVM API at {url} – "
-                f"have you run api-setup.sh on the device? ({err})"
-            ) from err
-        except aiohttp.ClientError as err:
-            raise JetKVMConnectionError(
-                f"Communication error with JetKVM at {url}: {err}"
-            ) from err
-        except TimeoutError as err:
-            raise JetKVMConnectionError(
-                f"Timeout connecting to JetKVM at {url}"
-            ) from err
+        last_err = None
+
+        for attempt in range(1, _MAX_RETRIES + 1):
+            _LOGGER.debug("JetKVM API request: GET %s (attempt %d)", url, attempt)
+            try:
+                async with session.get(
+                    url, timeout=aiohttp.ClientTimeout(total=10)
+                ) as resp:
+                    _LOGGER.debug("JetKVM API response: %s %s", resp.status, url)
+                    if resp.status != 200:
+                        raise JetKVMError(
+                            f"HTTP {resp.status} from {url}"
+                        )
+                    data = await resp.json(content_type=None)
+                    _LOGGER.debug("JetKVM API data: %s", data)
+                    return data
+            except (aiohttp.ClientConnectorError, aiohttp.ClientError, TimeoutError, OSError) as err:
+                last_err = err
+                _LOGGER.debug(
+                    "JetKVM API attempt %d failed for %s: %s", attempt, url, err
+                )
+                if attempt < _MAX_RETRIES:
+                    await asyncio.sleep(_REQUEST_DELAY)
+
+        # All retries exhausted
+        raise JetKVMConnectionError(
+            f"Cannot connect to JetKVM API at {url} after {_MAX_RETRIES} attempts – "
+            f"have you run api-setup.sh on the device? ({last_err})"
+        )
 
     # -- public API ----------------------------------------------------------
 
@@ -112,6 +128,5 @@ class JetKVMClient:
 
     async def validate_connection(self) -> dict:
         """Validate connectivity.  Returns device_info on success."""
-        await self.check_health()
         return await self.get_device_info()
 
