@@ -22,7 +22,6 @@ SENSOR_DESCRIPTIONS: List[JetKVMSensorDescription] = [
     JetKVMSensorDescription(
         name="SoC Temperature",
         key="temperature",
-        entity_name="soc_temperature",
         icon="mdi:thermometer",
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,

@@ -47,7 +47,7 @@ class JetKVMSensor(CoordinatorEntity, Entity):
         self._attr_native_unit_of_measurement = description.native_unit_of_measurement
         self._attr_suggested_display_precision = description.suggested_display_precision
         self._attr_entity_category = description.entity_category
-        self._attr_unique_id = f"{entry.entry_id}_{description.entity_name}"
+        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
         self._state = None
 
     @callback
