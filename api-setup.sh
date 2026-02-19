@@ -2,9 +2,12 @@
 # =====================================================================
 # JetKVM Home Assistant API Setup
 # =====================================================================
-# Installs a lightweight BusyBox httpd server on the JetKVM device
+# Installs a lightweight nc-based HTTP server on the JetKVM device
 # that exposes system data (temperature, uptime, etc.) as JSON
 # endpoints for the Home Assistant JetKVM integration.
+#
+# The server is supervised by a watchdog that auto-restarts on crash
+# and uses setsid to survive SSH session disconnects.
 #
 # Usage:
 #   1. SSH into your JetKVM:  ssh root@<jetkvm-ip>
@@ -14,9 +17,9 @@
 #        && sh /tmp/api-setup.sh
 #
 # Endpoints (after install):
-#   http://<jetkvm-ip>:8800/cgi-bin/health
-#   http://<jetkvm-ip>:8800/cgi-bin/temperature
-#   http://<jetkvm-ip>:8800/cgi-bin/device_info
+#   http://<jetkvm-ip>:8800/health
+#   http://<jetkvm-ip>:8800/temperature
+#   http://<jetkvm-ip>:8800/device_info
 #
 # To uninstall:
 #   sh /tmp/api-setup.sh --uninstall
@@ -25,8 +28,7 @@
 
 API_PORT=8800
 BASE_DIR="/opt/ha-api"
-WWW_DIR="${BASE_DIR}/www"
-CGI_DIR="${WWW_DIR}/cgi-bin"
+HANDLER_SCRIPT="${BASE_DIR}/handler.sh"
 WATCHDOG_SCRIPT="${BASE_DIR}/watchdog.sh"
 PID_FILE="${BASE_DIR}/watchdog.pid"
 LOG_FILE="${BASE_DIR}/server.log"
@@ -38,7 +40,7 @@ UNINSTALL_SCRIPT="${BASE_DIR}/uninstall.sh"
 if [ "$1" = "--uninstall" ]; then
     echo "=== Uninstalling JetKVM HA API ==="
 
-    # Stop watchdog (which will also stop httpd)
+    # Stop watchdog (kills nc children too)
     if [ -f "$PID_FILE" ]; then
         WPID=$(cat "$PID_FILE")
         kill "$WPID" 2>/dev/null
@@ -47,7 +49,7 @@ if [ "$1" = "--uninstall" ]; then
         rm -f "$PID_FILE"
     fi
 
-    # Kill any httpd still listening on our port
+    # Kill anything still on our port
     for p in $(netstat -tlnp 2>/dev/null | grep ":${API_PORT} " | awk '{print $NF}' | cut -d/ -f1); do
         kill "$p" 2>/dev/null
     done
@@ -79,7 +81,7 @@ if [ -f "$PID_FILE" ]; then
     sleep 1
     kill -9 "$WPID" 2>/dev/null
 fi
-# Also stop old nc-based server if present
+# Also stop old server.pid if present
 if [ -f "${BASE_DIR}/server.pid" ]; then
     kill "$(cat "${BASE_DIR}/server.pid")" 2>/dev/null
 fi
@@ -87,194 +89,144 @@ fi
 for p in $(netstat -tlnp 2>/dev/null | grep ":${API_PORT} " | awk '{print $NF}' | cut -d/ -f1); do
     kill "$p" 2>/dev/null
 done
-# Clean up old nc-based files
-rm -f "${BASE_DIR}/server.sh" "${BASE_DIR}/handler.sh" "${BASE_DIR}/fifo" "${BASE_DIR}/server.pid"
+# Clean up old files from previous versions
+rm -f "${BASE_DIR}/server.sh" "${BASE_DIR}/fifo" "${BASE_DIR}/server.pid"
+rm -rf "${BASE_DIR}/www" "${BASE_DIR}/config.sh"
 sleep 1
 
 # =====================================================================
-# Detect httpd binary
+# Check that nc is available
 # =====================================================================
-echo "Detecting httpd..."
-HTTPD_CMD=""
-
-# Method 1: httpd directly in PATH
-if command -v httpd >/dev/null 2>&1; then
-    HTTPD_CMD="httpd"
-    echo "  Found: httpd (in PATH)"
+echo "Checking for nc (netcat)..."
+NC_CMD=""
+if command -v nc >/dev/null 2>&1; then
+    NC_CMD="nc"
+elif busybox nc --help >/dev/null 2>&1; then
+    NC_CMD="busybox nc"
 fi
 
-# Method 2: busybox httpd applet (check via --list)
-if [ -z "$HTTPD_CMD" ] && busybox --list 2>/dev/null | grep -qx "httpd"; then
-    HTTPD_CMD="busybox httpd"
-    echo "  Found: busybox httpd (via --list)"
-fi
-
-# Method 3: busybox httpd applet (check via --list-full)
-if [ -z "$HTTPD_CMD" ] && busybox --list-full 2>/dev/null | grep -q "httpd"; then
-    HTTPD_CMD="busybox httpd"
-    echo "  Found: busybox httpd (via --list-full)"
-fi
-
-# Method 4: just try running busybox httpd --help (exit 0 or 1 both mean it exists)
-if [ -z "$HTTPD_CMD" ]; then
-    busybox httpd --help >/dev/null 2>&1
-    # busybox applets return 0 or 1 for --help, but 127/not-found gives different result
-    if [ $? -ne 127 ]; then
-        HTTPD_CMD="busybox httpd"
-        echo "  Found: busybox httpd (via --help probe)"
-    fi
-fi
-
-# Method 5: check common paths directly
-if [ -z "$HTTPD_CMD" ] && [ -x /usr/sbin/httpd ]; then
-    HTTPD_CMD="/usr/sbin/httpd"
-    echo "  Found: /usr/sbin/httpd"
-fi
-if [ -z "$HTTPD_CMD" ] && [ -x /usr/bin/httpd ]; then
-    HTTPD_CMD="/usr/bin/httpd"
-    echo "  Found: /usr/bin/httpd"
-fi
-
-# Method 6: find any httpd binary on the system
-if [ -z "$HTTPD_CMD" ]; then
-    FOUND_HTTPD=$(find /usr/sbin /usr/bin /sbin /bin -name "httpd" -type f 2>/dev/null | head -1)
-    if [ -n "$FOUND_HTTPD" ] && [ -x "$FOUND_HTTPD" ]; then
-        HTTPD_CMD="$FOUND_HTTPD"
-        echo "  Found: $FOUND_HTTPD (via find)"
-    fi
-fi
-
-if [ -z "$HTTPD_CMD" ]; then
-    echo ""
-    echo "ERROR: Cannot find httpd (BusyBox httpd) on this device."
-    echo ""
-    echo "Diagnostic info:"
-    echo "  which httpd:         $(which httpd 2>&1)"
-    echo "  which busybox:       $(which busybox 2>&1)"
-    echo "  busybox --list httpd:"
-    busybox --list 2>&1 | grep -i httpd || echo "    (none)"
-    echo "  busybox --list-full httpd:"
-    busybox --list-full 2>&1 | grep -i httpd || echo "    (none)"
-    echo "  busybox httpd test:"
-    busybox httpd 2>&1 || echo "    (failed)"
-    echo "  ls /usr/sbin/httpd:  $(ls -la /usr/sbin/httpd 2>&1)"
-    echo ""
-    echo "Workaround — create a symlink and re-run:"
-    echo "  ln -sf $(which busybox 2>/dev/null || echo /bin/busybox) /usr/sbin/httpd"
-    echo "  sh /tmp/api-setup.sh"
+if [ -z "$NC_CMD" ]; then
+    echo "ERROR: Cannot find nc (netcat) on this device."
+    echo "  which nc: $(which nc 2>&1)"
+    echo "  busybox --list | grep nc:"
+    busybox --list 2>&1 | grep "^nc$" || echo "    (none)"
     exit 1
 fi
+echo "  Found: $NC_CMD"
 
-echo "Using httpd command: $HTTPD_CMD"
+# Check if nc supports -e (execute) flag
+echo '#!/bin/sh' > /tmp/_nc_test_handler.sh
+echo 'echo test' >> /tmp/_nc_test_handler.sh
+chmod +x /tmp/_nc_test_handler.sh
+
+# Test nc -e support by trying to listen briefly
+NC_HAS_E=0
+$NC_CMD -l -p 18899 -e /tmp/_nc_test_handler.sh &
+NC_TEST_PID=$!
+sleep 1
+if kill -0 "$NC_TEST_PID" 2>/dev/null; then
+    NC_HAS_E=1
+    kill "$NC_TEST_PID" 2>/dev/null
+fi
+rm -f /tmp/_nc_test_handler.sh
+echo "  nc -e support: $([ "$NC_HAS_E" = "1" ] && echo "yes" || echo "no (will use pipe mode)")"
 
 # =====================================================================
-# Create directory structure
+# Create directory
 # =====================================================================
-mkdir -p "$CGI_DIR"
+mkdir -p "$BASE_DIR"
 
 # =====================================================================
-# CGI: /cgi-bin/health
+# Request handler script
 # =====================================================================
-cat << 'EOF' > "$CGI_DIR/health"
+cat << 'HANDLER' > "$HANDLER_SCRIPT"
 #!/bin/sh
-echo "Content-Type: application/json"
-echo "Access-Control-Allow-Origin: *"
-echo ""
-echo '{"status":"ok"}'
-EOF
-chmod +x "$CGI_DIR/health"
 
-# =====================================================================
-# CGI: /cgi-bin/temperature
-# =====================================================================
-cat << 'EOF' > "$CGI_DIR/temperature"
-#!/bin/sh
-echo "Content-Type: application/json"
-echo "Access-Control-Allow-Origin: *"
-echo ""
+# Read the HTTP request line (with a timeout via TMOUT or read -t)
+# BusyBox ash supports read -t
+read -t 5 -r REQUEST_LINE 2>/dev/null || REQUEST_LINE=""
 
-TEMP_RAW=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
-if [ -z "$TEMP_RAW" ]; then
-    echo '{"error":"cannot read temperature"}'
+if [ -z "$REQUEST_LINE" ]; then
+    printf "HTTP/1.0 408 Timeout\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
     exit 0
 fi
 
-# millidegrees -> degrees with one decimal
-TEMP_INT=$((TEMP_RAW / 1000))
-TEMP_FRAC=$(( (TEMP_RAW % 1000) / 100 ))
+# Extract path
+REQUEST_PATH=$(echo "$REQUEST_LINE" | awk '{print $2}')
 
-echo "{\"temperature\":${TEMP_INT}.${TEMP_FRAC}}"
-EOF
-chmod +x "$CGI_DIR/temperature"
+# Consume remaining headers (read until blank line, with timeout)
+while read -t 2 -r header 2>/dev/null; do
+    header=$(echo "$header" | tr -d '\r')
+    [ -z "$header" ] && break
+done
+
+# --- Route ---
+case "$REQUEST_PATH" in
+    /health)
+        BODY='{"status":"ok"}'
+        ;;
+    /temperature)
+        TEMP_RAW=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
+        if [ -z "$TEMP_RAW" ]; then
+            BODY='{"error":"cannot read temperature"}'
+        else
+            TEMP_INT=$((TEMP_RAW / 1000))
+            TEMP_FRAC=$(( (TEMP_RAW % 1000) / 100 ))
+            BODY="{\"temperature\":${TEMP_INT}.${TEMP_FRAC}}"
+        fi
+        ;;
+    /device_info)
+        TEMP_RAW=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
+        TEMP_INT=$((TEMP_RAW / 1000))
+        TEMP_FRAC=$(( (TEMP_RAW % 1000) / 100 ))
+        DEV_HOSTNAME=$(hostname 2>/dev/null || echo "jetkvm")
+        IP=$(ip -4 addr show eth0 2>/dev/null | awk '/inet / {split($2,a,"/"); print a[1]; exit}')
+        [ -z "$IP" ] && IP=$(ifconfig eth0 2>/dev/null | awk '/inet addr/{split($2,a,":"); print a[2]; exit}')
+        [ -z "$IP" ] && IP="unknown"
+        UPTIME=$(awk '{print $1}' /proc/uptime 2>/dev/null)
+        MEM_TOTAL=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null)
+        MEM_AVAIL=$(awk '/MemAvailable/ {print $2}' /proc/meminfo 2>/dev/null)
+        BODY="{\"deviceModel\":\"JetKVM\",\"hostname\":\"${DEV_HOSTNAME}\",\"ip_address\":\"${IP}\",\"temperature\":${TEMP_INT}.${TEMP_FRAC},\"uptime_seconds\":${UPTIME:-0},\"mem_total_kb\":${MEM_TOTAL:-0},\"mem_available_kb\":${MEM_AVAIL:-0}}"
+        ;;
+    *)
+        BODY='{"error":"not found"}'
+        ;;
+esac
+
+CONTENT_LENGTH=$(echo -n "$BODY" | wc -c)
+
+printf "HTTP/1.0 200 OK\r\n"
+printf "Content-Type: application/json\r\n"
+printf "Content-Length: %d\r\n" "$CONTENT_LENGTH"
+printf "Access-Control-Allow-Origin: *\r\n"
+printf "Connection: close\r\n"
+printf "\r\n"
+printf "%s" "$BODY"
+HANDLER
+chmod +x "$HANDLER_SCRIPT"
 
 # =====================================================================
-# CGI: /cgi-bin/device_info
+# Write config file (values expanded at install time)
 # =====================================================================
-cat << 'DEVINFO' > "$CGI_DIR/device_info"
-#!/bin/sh
-echo "Content-Type: application/json"
-echo "Access-Control-Allow-Origin: *"
-echo ""
-
-# Temperature
-TEMP_RAW=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
-TEMP_INT=$((TEMP_RAW / 1000))
-TEMP_FRAC=$(( (TEMP_RAW % 1000) / 100 ))
-
-# Hostname
-DEV_HOSTNAME=$(hostname 2>/dev/null || echo "jetkvm")
-
-# IP address (BusyBox-compatible)
-IP=$(ip -4 addr show eth0 2>/dev/null | awk '/inet / {split($2,a,"/"); print a[1]; exit}')
-if [ -z "$IP" ]; then
-    IP=$(ifconfig eth0 2>/dev/null | awk '/inet addr/{split($2,a,":"); print a[2]; exit}')
-fi
-if [ -z "$IP" ]; then
-    IP="unknown"
-fi
-
-# Uptime
-UPTIME=$(awk '{print $1}' /proc/uptime 2>/dev/null)
-
-# Memory (in kB)
-MEM_TOTAL=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null)
-MEM_AVAIL=$(awk '/MemAvailable/ {print $2}' /proc/meminfo 2>/dev/null)
-
-cat << ENDJSON
-{
-    "deviceModel": "JetKVM",
-    "hostname": "${DEV_HOSTNAME}",
-    "ip_address": "${IP}",
-    "temperature": ${TEMP_INT}.${TEMP_FRAC},
-    "uptime_seconds": ${UPTIME:-0},
-    "mem_total_kb": ${MEM_TOTAL:-0},
-    "mem_available_kb": ${MEM_AVAIL:-0}
-}
-ENDJSON
-DEVINFO
-chmod +x "$CGI_DIR/device_info"
-
-# =====================================================================
-# Watchdog script — starts httpd and restarts it if it ever dies.
-# Fully detached from the terminal so it survives SSH disconnect.
-# =====================================================================
-
-# Write a config file with detected values (expanded at install time)
 cat > "${BASE_DIR}/config.sh" << CONF
-HTTPD_CMD="${HTTPD_CMD}"
+NC_CMD="${NC_CMD}"
+NC_HAS_E=${NC_HAS_E}
 API_PORT=${API_PORT}
 BASE_DIR="${BASE_DIR}"
-WWW_DIR="${WWW_DIR}"
+HANDLER_SCRIPT="${HANDLER_SCRIPT}"
 PID_FILE="${PID_FILE}"
 LOG_FILE="${LOG_FILE}"
 CONF
 
-# Write watchdog script (NO expansion — single-quoted heredoc)
+# =====================================================================
+# Watchdog script — runs nc in a loop, restarts on exit.
+# Fully detached from terminal via setsid.
+# =====================================================================
 cat << 'WATCHDOG' > "$WATCHDOG_SCRIPT"
 #!/bin/sh
-# Watchdog for BusyBox httpd — restarts automatically if it exits.
+# Watchdog for nc-based HTTP server
 
-# Load config written at install time
+# Load config
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "${SCRIPT_DIR}/config.sh"
 
@@ -290,36 +242,40 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"
 }
 
-# Write our PID so the uninstaller can stop us
+# Write our PID
 echo $$ > "$PID_FILE"
 
-# Trap signals so we can clean up
+# Clean up on signal
 cleanup() {
     log "Watchdog stopping (signal received)"
-    if [ -n "$HTTPD_PID" ] && kill -0 "$HTTPD_PID" 2>/dev/null; then
-        kill "$HTTPD_PID" 2>/dev/null
-    fi
+    # Kill all children in our process group
+    kill 0 2>/dev/null
     rm -f "$PID_FILE"
     exit 0
 }
 trap cleanup INT TERM HUP
 
-log "Watchdog starting (PID $$) — using: $HTTPD_CMD"
+log "Watchdog starting (PID $$) — nc=$NC_CMD nc_e=$NC_HAS_E"
 
 RESTART_COUNT=0
-MAX_FAST_RESTARTS=10
-FAST_RESTART_WINDOW=60
+MAX_FAST_RESTARTS=50
+FAST_RESTART_WINDOW=10
 LAST_RESTART_TIME=0
 
 while true; do
-    # Start httpd in foreground mode (-f) so we can monitor its PID
-    $HTTPD_CMD -f -p "$API_PORT" -h "$WWW_DIR" &
-    HTTPD_PID=$!
+    if [ "$NC_HAS_E" = "1" ]; then
+        # nc -e mode: nc hands off each connection to the handler script
+        $NC_CMD -l -p "$API_PORT" -e "$HANDLER_SCRIPT" 2>/dev/null
+    else
+        # Pipe mode: use a named pipe (FIFO) for bidirectional I/O
+        FIFO="${BASE_DIR}/fifo"
+        [ ! -p "$FIFO" ] && { rm -f "$FIFO"; mkfifo "$FIFO"; }
+        cat "$FIFO" | $NC_CMD -l -p "$API_PORT" | "$HANDLER_SCRIPT" > "$FIFO" 2>/dev/null
+    fi
 
-    # Track timing for rapid-restart detection
+    # nc exits after each connection — this is normal.
+    # Track rapid restarts only to detect real problems.
     NOW=$(date +%s 2>/dev/null || awk '{printf "%d", $1}' /proc/uptime)
-    log "httpd started (PID $HTTPD_PID)"
-
     ELAPSED=$((NOW - LAST_RESTART_TIME))
     if [ "$ELAPSED" -lt "$FAST_RESTART_WINDOW" ]; then
         RESTART_COUNT=$((RESTART_COUNT + 1))
@@ -328,24 +284,17 @@ while true; do
     fi
     LAST_RESTART_TIME=$NOW
 
-    # Back off if httpd keeps crashing
     if [ "$RESTART_COUNT" -ge "$MAX_FAST_RESTARTS" ]; then
-        log "ERROR: httpd restarted $RESTART_COUNT times in <${FAST_RESTART_WINDOW}s — backing off 60s"
-        sleep 60
+        log "ERROR: nc restarted $RESTART_COUNT times in <${FAST_RESTART_WINDOW}s — backing off 30s"
+        sleep 30
         RESTART_COUNT=0
     fi
-
-    # Wait for httpd to exit
-    wait $HTTPD_PID
-    EXIT_CODE=$?
-    log "httpd exited (code $EXIT_CODE) — restarting in 2s..."
-    sleep 2
 done
 WATCHDOG
 chmod +x "$WATCHDOG_SCRIPT"
 
 # =====================================================================
-# Uninstall helper (convenience script on the device)
+# Uninstall helper
 # =====================================================================
 cat << 'UNINST' > "$UNINSTALL_SCRIPT"
 #!/bin/sh
@@ -380,32 +329,32 @@ if [ ! -f /etc/rc.local ]; then
     chmod +x /etc/rc.local
 fi
 
-# Remove any old entries (nc-based server.sh, old start.sh, etc.)
+# Remove old entries
 sed -i "\|/opt/ha-api/server.sh|d" /etc/rc.local
 sed -i "\|/opt/ha-api/start.sh|d" /etc/rc.local
 sed -i "\|${WATCHDOG_SCRIPT}|d" /etc/rc.local
 
-# Add the watchdog with setsid so it's fully detached
-# Sleep 3s at boot to let networking come up first
+# Add watchdog with setsid (fully detached from terminal)
 sed -i "/^exit 0/i (sleep 3 && setsid ${WATCHDOG_SCRIPT} </dev/null >/dev/null 2>&1 &)" /etc/rc.local
 
 # =====================================================================
 # Start the server now
 # =====================================================================
+echo ""
 echo "Starting API server on port ${API_PORT}..."
 
-# Use setsid to fully detach from this terminal session
-# This ensures the server survives SSH disconnect
 setsid "$WATCHDOG_SCRIPT" </dev/null >/dev/null 2>&1 &
-
-# Give httpd a moment to start inside the watchdog
 sleep 2
 
 # =====================================================================
-# Verify it's running
+# Verify
 # =====================================================================
 RUNNING=0
 if netstat -tlnp 2>/dev/null | grep -q ":${API_PORT} "; then
+    RUNNING=1
+fi
+# Also check if watchdog PID is alive
+if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
     RUNNING=1
 fi
 
@@ -423,14 +372,15 @@ if [ "$RUNNING" = "1" ]; then
     fi
     echo ""
     echo "Endpoints:"
-    echo "  http://${IP}:${API_PORT}/cgi-bin/health"
-    echo "  http://${IP}:${API_PORT}/cgi-bin/temperature"
-    echo "  http://${IP}:${API_PORT}/cgi-bin/device_info"
+    echo "  http://${IP}:${API_PORT}/health"
+    echo "  http://${IP}:${API_PORT}/temperature"
+    echo "  http://${IP}:${API_PORT}/device_info"
     echo ""
     echo "The server will:"
-    echo "  - Automatically restart if it crashes"
+    echo "  - Automatically restart after each request (nc is single-shot)"
     echo "  - Survive SSH session disconnect"
     echo "  - Start automatically on boot"
+    echo "  - Timeout idle connections after 5 seconds"
     echo ""
     echo "To uninstall:  sh ${UNINSTALL_SCRIPT}"
     echo "To view logs:  cat ${LOG_FILE}"
@@ -442,11 +392,11 @@ else
     echo "WARNING: Server may not have started correctly."
     echo ""
     echo "Debug info:"
-    echo "  httpd command: $HTTPD_CMD"
+    echo "  nc command:    $NC_CMD"
+    echo "  nc -e support: $([ "$NC_HAS_E" = "1" ] && echo "yes" || echo "no")"
     echo "  Log file:      cat ${LOG_FILE}"
     echo "  Config file:   cat ${BASE_DIR}/config.sh"
     echo "  Check port:    netstat -tlnp | grep ${API_PORT}"
-    echo "  Manual start:  $HTTPD_CMD -f -p ${API_PORT} -h ${WWW_DIR}"
     echo ""
     if [ -f "$LOG_FILE" ]; then
         echo "Recent log:"
