@@ -12,6 +12,11 @@ from .coordinator import JetKVMCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle options update by reloading the config entry."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
 def _build_device_info(entry: ConfigEntry, live_data: dict | None = None) -> dict:
     """Build device registry kwargs from config entry data + optional live data."""
     data = entry.data
@@ -61,7 +66,7 @@ def _build_device_info(entry: ConfigEntry, live_data: dict | None = None) -> dic
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up JetKVM from a config entry."""
     host = entry.data["host"]
-    password = entry.data.get("password", "")
+    password = entry.options.get("password", entry.data.get("password", ""))
 
     client = JetKVMClient(host=host, password=password)
     coordinator = JetKVMCoordinator(hass, client=client)
@@ -71,6 +76,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "coordinator": coordinator,
         "client": client,
     }
+
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     # Register / update device in the device registry
     device_reg = dr.async_get(hass)

@@ -8,6 +8,7 @@ A custom [Home Assistant](https://www.home-assistant.io/) integration for [JetKV
 ## Features
 
 - **SoC Temperature Sensor** — Monitors the JetKVM device's SoC temperature in °C (polled every 60 seconds)
+- **Live Video Camera** — Native WebRTC stream from JetKVM (requires JetKVM password)
 
 ## Setup
 
@@ -59,9 +60,16 @@ Copy `custom_components/jetkvm` into your HA `config/custom_components/` directo
 
 1. **Settings** → **Devices & Services** → **Add Integration**
 2. Search **JetKVM**
-3. Enter the IP address of your JetKVM (e.g. `192.168.1.178`)
+3. Enter the JetKVM IP address or hostname (for example `192.168.1.178`)
+4. (Optional) Enter your JetKVM web UI password to enable the camera stream
 
-Done — a **SoC Temperature** sensor will appear under the new JetKVM device.
+Done — the JetKVM device and sensors will appear in Home Assistant. If a password is provided and valid, the camera entity is created as well.
+
+## Camera / WebRTC Notes
+
+- The camera uses JetKVM native WebRTC signaling over port **80**.
+- No RTSP/HLS endpoint is required or used.
+- If password is empty or invalid, the integration still works for sensors but the camera is unavailable.
 
 ## How It Works
 
@@ -83,6 +91,38 @@ Done — a **SoC Temperature** sensor will appear under the new JetKVM device.
 | `/health` | `{"status":"ok"}` |
 | `/temperature` | `{"temperature":47.2}` |
 | `/device_info` | `{"deviceModel":"JetKVM","hostname":"...","temperature":47.2,...}` |
+
+## Troubleshooting
+
+### Sensors work, but camera is stuck on loading
+
+1. Confirm you entered the JetKVM password in the integration options.
+2. Check Home Assistant debug logs for `custom_components.jetkvm`.
+3. Look for these expected lines when opening the camera:
+
+```text
+JetKVM WebRTC signaling: connecting to ws://<ip>/webrtc/signaling/client
+JetKVM WebRTC signaling: got SDP answer via WS (... bytes)
+JetKVM camera: WebRTC OK (session ..., ... bytes)
+```
+
+If you do not see these lines, verify JetKVM web UI login still works with the same password and that Home Assistant can reach JetKVM on port 80.
+
+### Integration cannot connect
+
+- Re-run the setup script on JetKVM:
+
+```sh
+wget --no-check-certificate -qO- https://raw.githubusercontent.com/Poshy163/HomeAssistant-JetKVM/main/api-setup.sh | sh
+```
+
+- Verify endpoint from another machine:
+
+```text
+http://<your-jetkvm-ip>:8800/health
+```
+
+Expected response: `{"status":"ok"}`
 
 ## Requirements
 

@@ -3,20 +3,36 @@
         "step": {
             "user": {
                 "data": {
-                    "host": "IP Address / Hostname",
-                    "password": "Device Password (optional — enables video stream)"
+                    "host": "JetKVM IP address or hostname",
+                    "password": "JetKVM password (optional, required for video)"
                 },
-                "description": "Enter the IP address of your JetKVM device.\n\nYou must first SSH into the JetKVM and run the setup script:\nwget --no-check-certificate -O /tmp/api-setup.sh https://raw.githubusercontent.com/Poshy163/HomeAssistant-JetKVM/main/api-setup.sh && sh /tmp/api-setup.sh\n\nTo enable the live video stream, enter the JetKVM device password (the same one you use to log in to the web UI).",
-                "title": "JetKVM Integration Setup"
+                "description": "Enter your JetKVM address.\n\nBefore adding this integration, install the JetKVM helper API once via SSH:\nwget --no-check-certificate -O /tmp/api-setup.sh https://raw.githubusercontent.com/Poshy163/HomeAssistant-JetKVM/main/api-setup.sh && sh /tmp/api-setup.sh\n\nFor live video, provide the same password you use in the JetKVM web UI.",
+                "title": "Set up JetKVM"
             }
         },
         "error": {
-            "cannot_connect": "Cannot connect to the JetKVM API. Please SSH into your JetKVM and run: wget --no-check-certificate -O /tmp/api-setup.sh https://raw.githubusercontent.com/Poshy163/HomeAssistant-JetKVM/main/api-setup.sh && sh /tmp/api-setup.sh",
-            "invalid_auth": "Invalid JetKVM device password. Check the password you use to log in to the JetKVM web UI.",
-            "unknown": "An unexpected error occurred."
+            "cannot_connect": "Cannot connect to JetKVM. Verify the IP/hostname and ensure the helper API is installed on the device.",
+            "invalid_auth": "Password was rejected by JetKVM. Use the same password as the JetKVM web UI login.",
+            "unknown": "Unexpected error while setting up JetKVM. Check Home Assistant logs for details."
         },
         "abort": {
             "already_configured": "This JetKVM device is already configured."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "password": "JetKVM password (leave blank to disable video)"
+                },
+                "description": "Update the password used for JetKVM video streaming.\n\nLeave this blank to disable the camera entity.",
+                "title": "JetKVM Options"
+            }
+        },
+        "error": {
+            "cannot_connect": "Cannot connect to JetKVM. Verify network access and try again.",
+            "invalid_auth": "Password was rejected by JetKVM.",
+            "unknown": "Unexpected error while saving options. Check Home Assistant logs for details."
         }
     },
     "entity": {
