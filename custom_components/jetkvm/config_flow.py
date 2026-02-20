@@ -79,7 +79,7 @@ class JetKVMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "kernel_build": device_info.get("kernel_build", ""),
                 }
 
-                title = f"JetKVM ({device_info.get('hostname', host)})"
+                title = device_info.get("hostname") or host
                 return self.async_create_entry(title=title, data=entry_data)
 
             except JetKVMConnectionError as err:

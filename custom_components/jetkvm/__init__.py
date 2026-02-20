@@ -47,10 +47,12 @@ def _build_device_info(entry: ConfigEntry, live_data: dict | None = None) -> dic
     if mac:
         connections.add((dr.CONNECTION_NETWORK_MAC, mac))
 
+    device_name = hostname or host or "JetKVM"
+
     info: dict = {
         "identifiers": identifiers,
         "connections": connections,
-        "name": f"JetKVM ({hostname or host})",
+        "name": device_name,
         "manufacturer": "JetKVM",
         "model": model,
         "configuration_url": f"http://{host}",
