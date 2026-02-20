@@ -1,5 +1,7 @@
 """DataUpdateCoordinator for JetKVM."""
 import logging
+from datetime import datetime, timezone, timedelta
+
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
@@ -36,7 +38,11 @@ class JetKVMCoordinator(DataUpdateCoordinator):
                 result["temperature"] = data["temperature"]
 
             if "uptime_seconds" in data:
-                result["uptime_seconds"] = data["uptime_seconds"]
+                try:
+                    uptime = float(data["uptime_seconds"])
+                    result["last_boot"] = datetime.now(timezone.utc) - timedelta(seconds=uptime)
+                except (ValueError, TypeError):
+                    pass
 
             return result
 

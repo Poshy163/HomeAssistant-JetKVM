@@ -22,8 +22,8 @@
             "soc_temperature": {
                 "name": "SoC temperature"
             },
-            "uptime": {
-                "name": "Uptime"
+            "last_boot": {
+                "name": "Last boot"
             }
         }
     }

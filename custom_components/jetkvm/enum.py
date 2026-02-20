@@ -7,7 +7,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorStateClass,
 )
-from homeassistant.const import EntityCategory, UnitOfTemperature, UnitOfTime
+from homeassistant.const import EntityCategory, UnitOfTemperature
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -27,13 +27,10 @@ SENSOR_DESCRIPTIONS: List[JetKVMSensorDescription] = [
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     JetKVMSensorDescription(
-        key="uptime_seconds",
-        translation_key="uptime",
+        key="last_boot",
+        translation_key="last_boot",
         icon="mdi:clock-outline",
-        device_class=SensorDeviceClass.DURATION,
-        native_unit_of_measurement=UnitOfTime.SECONDS,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-        suggested_display_precision=0,
+        device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
 ]

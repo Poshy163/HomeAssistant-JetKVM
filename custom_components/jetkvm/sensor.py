@@ -1,5 +1,6 @@
 """Sensor platform for JetKVM integration."""
 import logging
+from datetime import datetime
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -53,7 +54,7 @@ class JetKVMSensor(CoordinatorEntity[JetKVMCoordinator], SensorEntity):
         self.async_write_ha_state()
 
     @property
-    def native_value(self) -> float | None:
+    def native_value(self) -> float | datetime | None:
         """Return the sensor value."""
         if self.coordinator.data is None:
             return None
