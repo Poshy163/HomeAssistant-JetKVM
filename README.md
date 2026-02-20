@@ -65,11 +65,23 @@ Copy `custom_components/jetkvm` into your HA `config/custom_components/` directo
 
 Done — the JetKVM device and sensors will appear in Home Assistant. If a password is provided and valid, the camera entity is created as well.
 
+### Step 4 — Manage password later (Options Flow)
+
+You can update the JetKVM password at any time without removing the integration:
+
+1. Go to **Settings** → **Devices & Services**
+2. Open **JetKVM**
+3. Click **Configure**
+4. Set password to enable/fix camera, or leave blank to disable camera access
+
+When options are saved, the integration reloads automatically.
+
 ## Camera / WebRTC Notes
 
 - The camera uses JetKVM native WebRTC signaling over port **80**.
 - No RTSP/HLS endpoint is required or used.
 - If password is empty or invalid, the integration still works for sensors but the camera is unavailable.
+- Newer JetKVM firmware uses WebSocket signaling (`/webrtc/signaling/client`), and this integration supports that flow.
 
 ## How It Works
 
@@ -96,7 +108,7 @@ Done — the JetKVM device and sensors will appear in Home Assistant. If a passw
 
 ### Sensors work, but camera is stuck on loading
 
-1. Confirm you entered the JetKVM password in the integration options.
+1. Confirm you entered the JetKVM password in **JetKVM → Configure**.
 2. Check Home Assistant debug logs for `custom_components.jetkvm`.
 3. Look for these expected lines when opening the camera:
 
@@ -107,6 +119,12 @@ JetKVM camera: WebRTC OK (session ..., ... bytes)
 ```
 
 If you do not see these lines, verify JetKVM web UI login still works with the same password and that Home Assistant can reach JetKVM on port 80.
+
+### I need to remove or change the camera password
+
+- Open **JetKVM → Configure** in Home Assistant.
+- Enter a new password to re-enable camera authentication.
+- Leave password blank to disable camera/WebRTC while keeping sensors active.
 
 ### Integration cannot connect
 
