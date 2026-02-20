@@ -9,8 +9,8 @@
 # The server is supervised by a watchdog that auto-restarts on crash
 # and uses setsid to survive SSH session disconnects.
 #
-# An auto-updater checks GitHub once per hour and silently re-installs
-# if a new version of this script is available.
+# An auto-updater checks GitHub every 5 minutes and silently re-installs
+# if a newer version of this script is available.
 #
 # Usage:
 #   1. SSH into your JetKVM:  ssh root@<jetkvm-ip>
@@ -41,8 +41,7 @@ UPDATER_PID_FILE="${BASE_DIR}/updater.pid"
 LOG_FILE="${BASE_DIR}/server.log"
 UNINSTALL_SCRIPT="${BASE_DIR}/uninstall.sh"
 SETUP_URL="https://raw.githubusercontent.com/Poshy163/HomeAssistant-JetKVM/main/api-setup.sh"
-INSTALLED_HASH_FILE="${BASE_DIR}/.installed_hash"
-UPDATE_INTERVAL=3600
+UPDATE_INTERVAL=300
 
 # =====================================================================
 # Uninstall
@@ -322,7 +321,7 @@ HANDLER_SCRIPT="${HANDLER_SCRIPT}"
 PID_FILE="${PID_FILE}"
 LOG_FILE="${LOG_FILE}"
 SETUP_URL="${SETUP_URL}"
-INSTALLED_HASH_FILE="${INSTALLED_HASH_FILE}"
+VERSION_FILE="${VERSION_FILE}"
 UPDATER_PID_FILE="${UPDATER_PID_FILE}"
 UPDATE_INTERVAL=${UPDATE_INTERVAL}
 CONF
@@ -439,31 +438,14 @@ UNINST
 chmod +x "$UNINSTALL_SCRIPT"
 
 # =====================================================================
-# Save hash of the currently installed script for update detection
-# =====================================================================
-# Use md5sum if available, otherwise sha256sum, otherwise cksum
-if command -v md5sum >/dev/null 2>&1; then
-    HASH_CMD="md5sum"
-elif command -v sha256sum >/dev/null 2>&1; then
-    HASH_CMD="sha256sum"
-else
-    HASH_CMD="cksum"
-fi
-
-# Hash ourselves (the setup script that was just run)
-SELF_SCRIPT="$0"
-if [ -f "$SELF_SCRIPT" ]; then
-    $HASH_CMD "$SELF_SCRIPT" | awk '{print $1}' > "$INSTALLED_HASH_FILE"
-fi
-
-# =====================================================================
-# Auto-updater script — checks GitHub once per hour, re-runs if changed
+# Auto-updater script — checks GitHub every 5 minutes, re-runs if newer
 # =====================================================================
 cat << 'UPDATER' > "$UPDATER_SCRIPT"
 #!/bin/sh
 # Auto-updater for JetKVM HA API
-# Checks for a new version of api-setup.sh every UPDATE_INTERVAL seconds.
-# If a new version is found, downloads and re-runs it automatically.
+# Checks the remote api-setup.sh for a higher version every UPDATE_INTERVAL
+# seconds. If the remote API_VERSION is greater than the local version,
+# downloads and re-runs the script automatically.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "${SCRIPT_DIR}/config.sh"
@@ -480,6 +462,23 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') [updater] $1" >> "$LOG_FILE"
 }
 
+# Compare two semver strings: returns 0 if $1 < $2, 1 if $1 >= $2
+version_lt() {
+    _a="$1"; _b="$2"
+    # Split on '.' and compare each numeric component
+    _a1=$(echo "$_a" | cut -d. -f1); _a2=$(echo "$_a" | cut -d. -f2); _a3=$(echo "$_a" | cut -d. -f3)
+    _b1=$(echo "$_b" | cut -d. -f1); _b2=$(echo "$_b" | cut -d. -f2); _b3=$(echo "$_b" | cut -d. -f3)
+    # Default empty components to 0
+    _a1=${_a1:-0}; _a2=${_a2:-0}; _a3=${_a3:-0}
+    _b1=${_b1:-0}; _b2=${_b2:-0}; _b3=${_b3:-0}
+    if [ "$_a1" -lt "$_b1" ] 2>/dev/null; then return 0; fi
+    if [ "$_a1" -gt "$_b1" ] 2>/dev/null; then return 1; fi
+    if [ "$_a2" -lt "$_b2" ] 2>/dev/null; then return 0; fi
+    if [ "$_a2" -gt "$_b2" ] 2>/dev/null; then return 1; fi
+    if [ "$_a3" -lt "$_b3" ] 2>/dev/null; then return 0; fi
+    return 1
+}
+
 # Write our PID
 echo $$ > "$UPDATER_PID_FILE"
 
@@ -489,15 +488,6 @@ cleanup() {
     exit 0
 }
 trap cleanup INT TERM HUP
-
-# Determine hash command
-if command -v md5sum >/dev/null 2>&1; then
-    HASH_CMD="md5sum"
-elif command -v sha256sum >/dev/null 2>&1; then
-    HASH_CMD="sha256sum"
-else
-    HASH_CMD="cksum"
-fi
 
 log "Updater starting (PID $$) — checking every ${UPDATE_INTERVAL}s"
 
@@ -517,20 +507,27 @@ while true; do
         continue
     fi
 
-    # Compare hash of downloaded script with installed hash
-    NEW_HASH=$($HASH_CMD "$TMP_SCRIPT" | awk '{print $1}')
-    OLD_HASH=""
-    if [ -f "$INSTALLED_HASH_FILE" ]; then
-        OLD_HASH=$(cat "$INSTALLED_HASH_FILE")
-    fi
+    # Extract API_VERSION from the downloaded script
+    REMOTE_VER=$(grep '^API_VERSION=' "$TMP_SCRIPT" | head -1 | sed 's/API_VERSION="\(.*\)"/\1/')
+    LOCAL_VER=$(cat "$VERSION_FILE" 2>/dev/null)
 
-    if [ "$NEW_HASH" = "$OLD_HASH" ]; then
-        log "No update available (hash unchanged)"
+    if [ -z "$REMOTE_VER" ]; then
+        log "Update check failed: could not extract API_VERSION from remote script"
         rm -f "$TMP_SCRIPT"
         continue
     fi
 
-    log "Update found! Old=$OLD_HASH New=$NEW_HASH — applying..."
+    if [ -z "$LOCAL_VER" ]; then
+        LOCAL_VER="0.0.0"
+    fi
+
+    if ! version_lt "$LOCAL_VER" "$REMOTE_VER"; then
+        log "No update available (local=$LOCAL_VER remote=$REMOTE_VER)"
+        rm -f "$TMP_SCRIPT"
+        continue
+    fi
+
+    log "Update found! local=$LOCAL_VER remote=$REMOTE_VER — applying..."
 
     # Run the new setup script (it will stop existing watchdog/updater, reinstall, and restart everything)
     sh "$TMP_SCRIPT" 2>&1 | while IFS= read -r line; do log "  $line"; done
@@ -608,7 +605,7 @@ if [ "$RUNNING" = "1" ]; then
     echo "  - Survive SSH session disconnect"
     echo "  - Start automatically on boot"
     echo "  - Timeout idle connections after 5 seconds"
-    echo "  - Auto-update from GitHub every hour"
+    echo "  - Auto-update from GitHub every 5 minutes"
     echo ""
     echo "To uninstall:  sh ${UNINSTALL_SCRIPT}"
     echo "To view logs:  cat ${LOG_FILE}"
