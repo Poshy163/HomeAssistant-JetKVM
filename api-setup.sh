@@ -41,7 +41,7 @@ UPDATER_PID_FILE="${BASE_DIR}/updater.pid"
 LOG_FILE="${BASE_DIR}/server.log"
 UNINSTALL_SCRIPT="${BASE_DIR}/uninstall.sh"
 SETUP_URL="https://raw.githubusercontent.com/Poshy163/HomeAssistant-JetKVM/main/api-setup.sh"
-UPDATE_INTERVAL=300
+UPDATE_INTERVAL=3600
 
 # =====================================================================
 # Uninstall
