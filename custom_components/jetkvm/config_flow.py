@@ -34,13 +34,24 @@ class JetKVMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.debug("JetKVM setup: connection successful, device_info=%s", device_info)
                 await client.close()
 
-                # Use hostname or ip as unique ID
-                unique_id = device_info.get("hostname", host)
+                # Use serial number as unique ID, fall back to hostname
+                unique_id = device_info.get("serial_number") or device_info.get("hostname", host)
                 await self.async_set_unique_id(unique_id)
                 self._abort_if_unique_id_configured()
 
-                title = f"JetKVM ({host})"
-                return self.async_create_entry(title=title, data=user_input)
+                # Store device metadata alongside host for device registry
+                entry_data = {
+                    **user_input,
+                    "serial_number": device_info.get("serial_number", ""),
+                    "mac_address": device_info.get("mac_address", ""),
+                    "model": device_info.get("deviceModel", "JetKVM"),
+                    "hostname": device_info.get("hostname", ""),
+                    "kernel_version": device_info.get("kernel_version", ""),
+                    "kernel_build": device_info.get("kernel_build", ""),
+                }
+
+                title = f"JetKVM ({device_info.get('hostname', host)})"
+                return self.async_create_entry(title=title, data=entry_data)
 
             except JetKVMConnectionError as err:
                 _LOGGER.error("JetKVM setup: connection failed: %s", err)

@@ -5,10 +5,7 @@ from datetime import datetime
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import (
-    CONNECTION_NETWORK_MAC,
-    DeviceInfo,
-)
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -65,37 +62,15 @@ class JetKVMSensor(CoordinatorEntity[JetKVMCoordinator], SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device information about this JetKVM device."""
-        device_data = self.coordinator.device_info or {}
-        serial = device_data.get("serial_number", "")
-        mac = device_data.get("mac_address", "")
+        """Return device info to link this entity to the device registry."""
+        data = self._entry.data
+        serial = data.get("serial_number", "")
 
-        # Build identifier set — prefer serial, fall back to entry_id
         identifiers = set()
         if serial:
             identifiers.add((DOMAIN, serial))
         else:
             identifiers.add((DOMAIN, self._entry.entry_id))
 
-        # Build connections set for MAC address
-        connections = set()
-        if mac:
-            connections.add((CONNECTION_NETWORK_MAC, mac))
-
-        # Kernel version as firmware version
-        sw_version = device_data.get("kernel_version")
-        kernel_build = device_data.get("kernel_build")
-        if sw_version and kernel_build:
-            sw_version = f"{sw_version} ({kernel_build})"
-
-        return DeviceInfo(
-            identifiers=identifiers,
-            connections=connections,
-            name=f"JetKVM ({device_data.get('hostname', self._entry.data.get('host', 'Unknown'))})",
-            manufacturer="JetKVM",
-            model=device_data.get("deviceModel", "JetKVM"),
-            serial_number=serial or None,
-            sw_version=sw_version,
-            configuration_url=f"http://{self._entry.data.get('host', '')}",
-        )
+        return DeviceInfo(identifiers=identifiers)
 
