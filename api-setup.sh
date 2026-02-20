@@ -230,11 +230,14 @@ case "$REQUEST_PATH" in
 
         # Uptime
         UPTIME=$(awk '{print $1}' /proc/uptime 2>/dev/null)
+        [ -z "$UPTIME" ] && UPTIME=0
 
         # Memory (kB)
         MEM_TOTAL=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null)
         MEM_AVAIL=$(awk '/MemAvailable/ {print $2}' /proc/meminfo 2>/dev/null)
-        if [ -n "$MEM_TOTAL" ] && [ "$MEM_TOTAL" -gt 0 ] 2>/dev/null; then
+        case "$MEM_TOTAL" in ''|*[!0-9]*) MEM_TOTAL=0 ;; esac
+        case "$MEM_AVAIL" in ''|*[!0-9]*) MEM_AVAIL=0 ;; esac
+        if [ "$MEM_TOTAL" -gt 0 ] 2>/dev/null; then
             MEM_USED=$((MEM_TOTAL - MEM_AVAIL))
             # percentage * 10 for one decimal place using integer math
             MEM_PCT_X10=$(( MEM_USED * 1000 / MEM_TOTAL ))
@@ -246,14 +249,18 @@ case "$REQUEST_PATH" in
         fi
 
         # Storage — root filesystem
-        DISK_LINE=$(df /dev/root 2>/dev/null | tail -1)
-        if [ -z "$DISK_LINE" ]; then
-            DISK_LINE=$(df / 2>/dev/null | tail -1)
-        fi
-        DISK_TOTAL_KB=$(echo "$DISK_LINE" | awk '{print $2}')
-        DISK_USED_KB=$(echo "$DISK_LINE" | awk '{print $3}')
-        DISK_AVAIL_KB=$(echo "$DISK_LINE" | awk '{print $4}')
-        if [ -n "$DISK_TOTAL_KB" ] && [ "$DISK_TOTAL_KB" -gt 0 ] 2>/dev/null; then
+        # Use awk to skip the header (NR>1) and grab the first data line.
+        # BusyBox df may output differently, so try multiple approaches.
+        DISK_TOTAL_KB=$(df / 2>/dev/null | awk 'NR==2 {print $2}')
+        DISK_USED_KB=$(df / 2>/dev/null | awk 'NR==2 {print $3}')
+        DISK_AVAIL_KB=$(df / 2>/dev/null | awk 'NR==2 {print $4}')
+
+        # Validate values are numeric — fallback to 0 if not
+        case "$DISK_TOTAL_KB" in ''|*[!0-9]*) DISK_TOTAL_KB=0 ;; esac
+        case "$DISK_USED_KB" in ''|*[!0-9]*) DISK_USED_KB=0 ;; esac
+        case "$DISK_AVAIL_KB" in ''|*[!0-9]*) DISK_AVAIL_KB=0 ;; esac
+
+        if [ "$DISK_TOTAL_KB" -gt 0 ] 2>/dev/null; then
             DISK_PCT_X10=$(( DISK_USED_KB * 1000 / DISK_TOTAL_KB ))
             DISK_PCT_INT=$((DISK_PCT_X10 / 10))
             DISK_PCT_FRAC=$((DISK_PCT_X10 % 10))
@@ -264,6 +271,7 @@ case "$REQUEST_PATH" in
 
         # CPU load (1 min avg)
         LOAD_AVG=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
+        [ -z "$LOAD_AVG" ] && LOAD_AVG=0
 
         # Build JSON with properly escaped strings
         J_MODEL=$(json_escape "$MODEL")
