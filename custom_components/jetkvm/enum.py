@@ -55,7 +55,7 @@ SENSOR_DESCRIPTIONS: List[JetKVMSensorDescription] = [
         key="mem_available_kb",
         translation_key="memory_available",
         icon="mdi:memory",
-        native_unit_of_measurement="kB",
+        native_unit_of_measurement="KiB",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
@@ -72,7 +72,7 @@ SENSOR_DESCRIPTIONS: List[JetKVMSensorDescription] = [
         key="disk_available_kb",
         translation_key="disk_available",
         icon="mdi:harddisk",
-        native_unit_of_measurement="kB",
+        native_unit_of_measurement="KiB",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
@@ -97,4 +97,3 @@ SENSOR_DESCRIPTIONS: List[JetKVMSensorDescription] = [
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
 ]
-
