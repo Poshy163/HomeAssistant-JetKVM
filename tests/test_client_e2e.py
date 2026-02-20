@@ -30,14 +30,29 @@ async def h_temp(r):
     return web.json_response({"temperature": _temp()})
 
 async def h_info(r):
+    mem_total = 262144
+    mem_avail = 131072
+    disk_total = 524288
+    disk_used = 200000
     return web.json_response({
         "deviceModel": "JetKVM",
+        "serial_number": "18cb28a5431d2479",
         "hostname": "jetkvm-mock",
         "ip_address": "127.0.0.1",
+        "mac_address": "44:b7:d0:e3:a9:24",
+        "network_state": "up",
+        "kernel_version": "5.10.160",
+        "kernel_build": "#1 Thu Jan 29 12:20:45 CET 2026",
         "temperature": _temp(),
         "uptime_seconds": round(time.monotonic(), 1),
-        "mem_total_kb": 262144,
-        "mem_available_kb": 131072,
+        "load_average": 0.42,
+        "mem_total_kb": mem_total,
+        "mem_available_kb": mem_avail,
+        "mem_used_pct": round((mem_total - mem_avail) / mem_total * 100, 1),
+        "disk_total_kb": disk_total,
+        "disk_used_kb": disk_used,
+        "disk_available_kb": disk_total - disk_used,
+        "disk_used_pct": round(disk_used / disk_total * 100, 1),
     })
 
 async def run_tests():
@@ -100,12 +115,22 @@ async def run_tests():
     ok("has deviceModel", info.get("deviceModel") == "JetKVM", f"got {info.get('deviceModel')}")
     ok("has hostname", "hostname" in info)
     ok("has temperature", "temperature" in info)
+    ok("has serial_number", "serial_number" in info)
+    ok("has mac_address", "mac_address" in info)
+    ok("has network_state", "network_state" in info)
+    ok("has kernel_version", "kernel_version" in info)
+    ok("has load_average", "load_average" in info)
+    ok("has mem_used_pct", "mem_used_pct" in info)
+    ok("has disk_used_pct", "disk_used_pct" in info)
 
     # Test 4: get_all_data (used by coordinator)
     print("--- get_all_data ---")
     data = await client.get_all_data()
     ok("returns dict", isinstance(data, dict))
     ok("has temperature key", "temperature" in data)
+    ok("has load_average key", "load_average" in data)
+    ok("has mem_used_pct key", "mem_used_pct" in data)
+    ok("has disk_used_pct key", "disk_used_pct" in data)
 
     # Test 5: validate_connection
     print("--- validate_connection ---")

@@ -24,6 +24,18 @@
             },
             "last_boot": {
                 "name": "Last boot"
+            },
+            "memory_usage": {
+                "name": "Memory usage"
+            },
+            "disk_usage": {
+                "name": "Disk usage"
+            },
+            "cpu_load": {
+                "name": "CPU load (1m)"
+            },
+            "network_state": {
+                "name": "Network state"
             }
         }
     }

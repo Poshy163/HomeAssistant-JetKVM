@@ -200,17 +200,66 @@ case "$REQUEST_PATH" in
         fi
         ;;
     /device_info)
+        # Temperature
         TEMP_RAW=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
         TEMP_INT=$((TEMP_RAW / 1000))
         TEMP_FRAC=$(( (TEMP_RAW % 1000) / 100 ))
+
+        # Identity
         DEV_HOSTNAME=$(hostname 2>/dev/null || echo "jetkvm")
+        SERIAL=$(cat /sys/firmware/devicetree/base/serial-number 2>/dev/null | tr -d '\0')
+        MODEL=$(cat /sys/firmware/devicetree/base/model 2>/dev/null | tr -d '\0')
+        [ -z "$MODEL" ] && MODEL="JetKVM"
+
+        # Firmware / kernel
+        KERNEL_VERSION=$(uname -r 2>/dev/null)
+        KERNEL_BUILD=$(uname -v 2>/dev/null)
+
+        # Network
         IP=$(ip -4 addr show eth0 2>/dev/null | awk '/inet / {split($2,a,"/"); print a[1]; exit}')
         [ -z "$IP" ] && IP=$(ifconfig eth0 2>/dev/null | awk '/inet addr/{split($2,a,":"); print a[2]; exit}')
         [ -z "$IP" ] && IP="unknown"
+        MAC=$(cat /sys/class/net/eth0/address 2>/dev/null)
+        LINK_STATE=$(cat /sys/class/net/eth0/operstate 2>/dev/null)
+
+        # Uptime
         UPTIME=$(awk '{print $1}' /proc/uptime 2>/dev/null)
+
+        # Memory (kB)
         MEM_TOTAL=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null)
         MEM_AVAIL=$(awk '/MemAvailable/ {print $2}' /proc/meminfo 2>/dev/null)
-        BODY="{\"deviceModel\":\"JetKVM\",\"hostname\":\"${DEV_HOSTNAME}\",\"ip_address\":\"${IP}\",\"temperature\":${TEMP_INT}.${TEMP_FRAC},\"uptime_seconds\":${UPTIME:-0},\"mem_total_kb\":${MEM_TOTAL:-0},\"mem_available_kb\":${MEM_AVAIL:-0}}"
+        if [ -n "$MEM_TOTAL" ] && [ "$MEM_TOTAL" -gt 0 ] 2>/dev/null; then
+            MEM_USED=$((MEM_TOTAL - MEM_AVAIL))
+            # percentage * 10 for one decimal place using integer math
+            MEM_PCT_X10=$(( MEM_USED * 1000 / MEM_TOTAL ))
+            MEM_PCT_INT=$((MEM_PCT_X10 / 10))
+            MEM_PCT_FRAC=$((MEM_PCT_X10 % 10))
+        else
+            MEM_PCT_INT=0
+            MEM_PCT_FRAC=0
+        fi
+
+        # Storage — root filesystem
+        DISK_LINE=$(df /dev/root 2>/dev/null | tail -1)
+        if [ -z "$DISK_LINE" ]; then
+            DISK_LINE=$(df / 2>/dev/null | tail -1)
+        fi
+        DISK_TOTAL_KB=$(echo "$DISK_LINE" | awk '{print $2}')
+        DISK_USED_KB=$(echo "$DISK_LINE" | awk '{print $3}')
+        DISK_AVAIL_KB=$(echo "$DISK_LINE" | awk '{print $4}')
+        if [ -n "$DISK_TOTAL_KB" ] && [ "$DISK_TOTAL_KB" -gt 0 ] 2>/dev/null; then
+            DISK_PCT_X10=$(( DISK_USED_KB * 1000 / DISK_TOTAL_KB ))
+            DISK_PCT_INT=$((DISK_PCT_X10 / 10))
+            DISK_PCT_FRAC=$((DISK_PCT_X10 % 10))
+        else
+            DISK_PCT_INT=0
+            DISK_PCT_FRAC=0
+        fi
+
+        # CPU load (1 min avg)
+        LOAD_AVG=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
+
+        BODY="{\"deviceModel\":\"${MODEL}\",\"serial_number\":\"${SERIAL}\",\"hostname\":\"${DEV_HOSTNAME}\",\"ip_address\":\"${IP}\",\"mac_address\":\"${MAC}\",\"network_state\":\"${LINK_STATE}\",\"kernel_version\":\"${KERNEL_VERSION}\",\"kernel_build\":\"${KERNEL_BUILD}\",\"temperature\":${TEMP_INT}.${TEMP_FRAC},\"uptime_seconds\":${UPTIME:-0},\"load_average\":${LOAD_AVG:-0},\"mem_total_kb\":${MEM_TOTAL:-0},\"mem_available_kb\":${MEM_AVAIL:-0},\"mem_used_pct\":${MEM_PCT_INT}.${MEM_PCT_FRAC},\"disk_total_kb\":${DISK_TOTAL_KB:-0},\"disk_used_kb\":${DISK_USED_KB:-0},\"disk_available_kb\":${DISK_AVAIL_KB:-0},\"disk_used_pct\":${DISK_PCT_INT}.${DISK_PCT_FRAC}}"
         ;;
     *)
         BODY='{"error":"not found"}'

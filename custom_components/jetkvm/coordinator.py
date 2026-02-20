@@ -44,6 +44,18 @@ class JetKVMCoordinator(DataUpdateCoordinator):
                 except (ValueError, TypeError):
                     pass
 
+            if "mem_used_pct" in data:
+                result["mem_used_pct"] = data["mem_used_pct"]
+
+            if "disk_used_pct" in data:
+                result["disk_used_pct"] = data["disk_used_pct"]
+
+            if "load_average" in data:
+                result["load_average"] = data["load_average"]
+
+            if "network_state" in data:
+                result["network_state"] = data["network_state"]
+
             return result
 
         except JetKVMError as err:

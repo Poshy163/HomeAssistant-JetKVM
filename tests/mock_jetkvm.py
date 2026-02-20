@@ -38,14 +38,32 @@ async def cgi_temperature(request: web.Request) -> web.Response:
 
 async def cgi_device_info(request: web.Request) -> web.Response:
     temp = get_temperature()
+    mem_total = 262144
+    mem_avail = random.randint(100000, 200000)
+    mem_used_pct = round((mem_total - mem_avail) / mem_total * 100, 1)
+    disk_total = 524288
+    disk_used = random.randint(100000, 400000)
+    disk_avail = disk_total - disk_used
+    disk_used_pct = round(disk_used / disk_total * 100, 1)
     info = {
         "deviceModel": "JetKVM",
+        "serial_number": "18cb28a5431d2479",
         "hostname": "jetkvm-mock",
         "ip_address": "127.0.0.1",
+        "mac_address": "44:b7:d0:e3:a9:24",
+        "network_state": "up",
+        "kernel_version": "5.10.160",
+        "kernel_build": "#1 Thu Jan 29 12:20:45 CET 2026",
         "temperature": temp,
         "uptime_seconds": round(time.monotonic(), 1),
-        "mem_total_kb": 262144,
-        "mem_available_kb": 131072,
+        "load_average": round(random.uniform(0.0, 2.0), 2),
+        "mem_total_kb": mem_total,
+        "mem_available_kb": mem_avail,
+        "mem_used_pct": mem_used_pct,
+        "disk_total_kb": disk_total,
+        "disk_used_kb": disk_used,
+        "disk_available_kb": disk_avail,
+        "disk_used_pct": disk_used_pct,
     }
     print(f"[API] /device_info -> temp={temp}")
     return web.json_response(info)
