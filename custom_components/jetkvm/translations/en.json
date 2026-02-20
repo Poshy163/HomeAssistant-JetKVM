@@ -6,7 +6,7 @@
                     "host": "JetKVM IP address or hostname",
                     "password": "JetKVM password (optional, required for video)"
                 },
-                "description": "Enter your JetKVM address.\n\nBefore adding this integration, install the JetKVM helper API once via SSH:\nwget --no-check-certificate -O /tmp/api-setup.sh https://raw.githubusercontent.com/Poshy163/HomeAssistant-JetKVM/main/api-setup.sh && sh /tmp/api-setup.sh\n\nFor live video, provide the same password you use in the JetKVM web UI.",
+                "description": "Enter your JetKVM address.\n\nBefore adding this integration, install the JetKVM helper API once via SSH (see README for the command).\n\nFor live video, provide the same password you use in the JetKVM web UI.",
                 "title": "Set up JetKVM"
             }
         },
@@ -43,11 +43,20 @@
             "last_boot": {
                 "name": "Last boot"
             },
+            "uptime": {
+                "name": "Uptime"
+            },
             "memory_usage": {
                 "name": "Memory usage"
             },
+            "memory_available": {
+                "name": "Memory available"
+            },
             "disk_usage": {
                 "name": "Disk usage"
+            },
+            "disk_available": {
+                "name": "Disk available"
             },
             "cpu_load": {
                 "name": "CPU load (1m)"

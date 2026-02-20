@@ -40,15 +40,20 @@ class JetKVMCoordinator(DataUpdateCoordinator):
             if "uptime_seconds" in data:
                 try:
                     uptime = float(data["uptime_seconds"])
+                    result["uptime_seconds"] = uptime
                     result["last_boot"] = datetime.now(timezone.utc) - timedelta(seconds=uptime)
                 except (ValueError, TypeError):
                     pass
 
             if "mem_used_pct" in data:
                 result["mem_used_pct"] = data["mem_used_pct"]
+            if "mem_available_kb" in data:
+                result["mem_available_kb"] = data["mem_available_kb"]
 
             if "disk_used_pct" in data:
                 result["disk_used_pct"] = data["disk_used_pct"]
+            if "disk_available_kb" in data:
+                result["disk_available_kb"] = data["disk_available_kb"]
 
             if "load_average" in data:
                 result["load_average"] = data["load_average"]
@@ -65,4 +70,3 @@ class JetKVMCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error communicating with JetKVM: {err}") from err
         except Exception as err:
             raise UpdateFailed(f"Unexpected error: {err}") from err
-

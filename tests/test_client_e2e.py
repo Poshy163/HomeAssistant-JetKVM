@@ -121,8 +121,11 @@ async def run_tests():
     ok("has network_state", "network_state" in info)
     ok("has kernel_version", "kernel_version" in info)
     ok("has load_average", "load_average" in info)
+    ok("has uptime_seconds", "uptime_seconds" in info)
     ok("has mem_used_pct", "mem_used_pct" in info)
+    ok("has mem_available_kb", "mem_available_kb" in info)
     ok("has disk_used_pct", "disk_used_pct" in info)
+    ok("has disk_available_kb", "disk_available_kb" in info)
     ok("has api_version", info.get("api_version") == "1.0.0", f"got {info.get('api_version')}")
 
     # Test 4: get_all_data (used by coordinator)
@@ -131,8 +134,11 @@ async def run_tests():
     ok("returns dict", isinstance(data, dict))
     ok("has temperature key", "temperature" in data)
     ok("has load_average key", "load_average" in data)
+    ok("has uptime_seconds key", "uptime_seconds" in data)
     ok("has mem_used_pct key", "mem_used_pct" in data)
+    ok("has mem_available_kb key", "mem_available_kb" in data)
     ok("has disk_used_pct key", "disk_used_pct" in data)
+    ok("has disk_available_kb key", "disk_available_kb" in data)
     ok("has api_version key", "api_version" in data)
 
     # Test 5: validate_connection
@@ -166,6 +172,5 @@ async def run_tests():
 if __name__ == "__main__":
     success = asyncio.run(run_tests())
     sys.exit(0 if success else 1)
-
 
 
