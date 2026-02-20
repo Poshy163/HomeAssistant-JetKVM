@@ -166,6 +166,12 @@ mkdir -p "$BASE_DIR"
 cat << 'HANDLER' > "$HANDLER_SCRIPT"
 #!/bin/sh
 
+# Escape a string for safe embedding inside a JSON string value.
+# Handles backslash, double-quote, and control characters.
+json_escape() {
+    printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/	/\\t/g' | tr -d '\n\r'
+}
+
 # Read the HTTP request line (with a timeout via TMOUT or read -t)
 # BusyBox ash supports read -t
 read -t 5 -r REQUEST_LINE 2>/dev/null || REQUEST_LINE=""
@@ -259,7 +265,17 @@ case "$REQUEST_PATH" in
         # CPU load (1 min avg)
         LOAD_AVG=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
 
-        BODY="{\"deviceModel\":\"${MODEL}\",\"serial_number\":\"${SERIAL}\",\"hostname\":\"${DEV_HOSTNAME}\",\"ip_address\":\"${IP}\",\"mac_address\":\"${MAC}\",\"network_state\":\"${LINK_STATE}\",\"kernel_version\":\"${KERNEL_VERSION}\",\"kernel_build\":\"${KERNEL_BUILD}\",\"temperature\":${TEMP_INT}.${TEMP_FRAC},\"uptime_seconds\":${UPTIME:-0},\"load_average\":${LOAD_AVG:-0},\"mem_total_kb\":${MEM_TOTAL:-0},\"mem_available_kb\":${MEM_AVAIL:-0},\"mem_used_pct\":${MEM_PCT_INT}.${MEM_PCT_FRAC},\"disk_total_kb\":${DISK_TOTAL_KB:-0},\"disk_used_kb\":${DISK_USED_KB:-0},\"disk_available_kb\":${DISK_AVAIL_KB:-0},\"disk_used_pct\":${DISK_PCT_INT}.${DISK_PCT_FRAC}}"
+        # Build JSON with properly escaped strings
+        J_MODEL=$(json_escape "$MODEL")
+        J_SERIAL=$(json_escape "$SERIAL")
+        J_HOSTNAME=$(json_escape "$DEV_HOSTNAME")
+        J_IP=$(json_escape "$IP")
+        J_MAC=$(json_escape "$MAC")
+        J_LINK=$(json_escape "$LINK_STATE")
+        J_KVER=$(json_escape "$KERNEL_VERSION")
+        J_KBUILD=$(json_escape "$KERNEL_BUILD")
+
+        BODY="{\"deviceModel\":\"${J_MODEL}\",\"serial_number\":\"${J_SERIAL}\",\"hostname\":\"${J_HOSTNAME}\",\"ip_address\":\"${J_IP}\",\"mac_address\":\"${J_MAC}\",\"network_state\":\"${J_LINK}\",\"kernel_version\":\"${J_KVER}\",\"kernel_build\":\"${J_KBUILD}\",\"temperature\":${TEMP_INT}.${TEMP_FRAC},\"uptime_seconds\":${UPTIME:-0},\"load_average\":${LOAD_AVG:-0},\"mem_total_kb\":${MEM_TOTAL:-0},\"mem_available_kb\":${MEM_AVAIL:-0},\"mem_used_pct\":${MEM_PCT_INT}.${MEM_PCT_FRAC},\"disk_total_kb\":${DISK_TOTAL_KB:-0},\"disk_used_kb\":${DISK_USED_KB:-0},\"disk_available_kb\":${DISK_AVAIL_KB:-0},\"disk_used_pct\":${DISK_PCT_INT}.${DISK_PCT_FRAC}}"
         ;;
     *)
         BODY='{"error":"not found"}'

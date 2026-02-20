@@ -81,7 +81,20 @@ class JetKVMClient:
                         raise JetKVMError(
                             f"HTTP {resp.status} from {url}"
                         )
-                    data = await resp.json(content_type=None)
+                    raw_text = await resp.text()
+                    _LOGGER.debug("JetKVM API raw response: %s", raw_text[:500])
+                    try:
+                        import json
+                        data = json.loads(raw_text)
+                    except (json.JSONDecodeError, ValueError) as json_err:
+                        _LOGGER.warning(
+                            "JetKVM API returned invalid JSON from %s (attempt %d): %s — raw: %s",
+                            url, attempt, json_err, raw_text[:200],
+                        )
+                        last_err = json_err
+                        if attempt < _MAX_RETRIES:
+                            await asyncio.sleep(_REQUEST_DELAY)
+                        continue
                     _LOGGER.debug("JetKVM API data: %s", data)
                     return data
             except (aiohttp.ClientConnectorError, aiohttp.ClientError, TimeoutError, OSError) as err:
