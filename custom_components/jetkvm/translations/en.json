@@ -3,14 +3,16 @@
         "step": {
             "user": {
                 "data": {
-                    "host": "IP Address / Hostname"
+                    "host": "IP Address / Hostname",
+                    "password": "Device Password (optional — enables video stream)"
                 },
-                "description": "Enter the IP address of your JetKVM device.\n\nYou must first SSH into the JetKVM and run the setup script:\nwget --no-check-certificate -O /tmp/api-setup.sh https://raw.githubusercontent.com/Poshy163/HomeAssistant-JetKVM/main/api-setup.sh && sh /tmp/api-setup.sh",
+                "description": "Enter the IP address of your JetKVM device.\n\nYou must first SSH into the JetKVM and run the setup script:\nwget --no-check-certificate -O /tmp/api-setup.sh https://raw.githubusercontent.com/Poshy163/HomeAssistant-JetKVM/main/api-setup.sh && sh /tmp/api-setup.sh\n\nTo enable the live video stream, enter the JetKVM device password (the same one you use to log in to the web UI).",
                 "title": "JetKVM Integration Setup"
             }
         },
         "error": {
             "cannot_connect": "Cannot connect to the JetKVM API. Please SSH into your JetKVM and run: wget --no-check-certificate -O /tmp/api-setup.sh https://raw.githubusercontent.com/Poshy163/HomeAssistant-JetKVM/main/api-setup.sh && sh /tmp/api-setup.sh",
+            "invalid_auth": "Invalid JetKVM device password. Check the password you use to log in to the JetKVM web UI.",
             "unknown": "An unexpected error occurred."
         },
         "abort": {
@@ -39,6 +41,11 @@
             },
             "api_version": {
                 "name": "API version"
+            }
+        },
+        "camera": {
+            "video_stream": {
+                "name": "Video stream"
             }
         }
     }

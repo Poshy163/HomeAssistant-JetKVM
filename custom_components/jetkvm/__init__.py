@@ -61,8 +61,9 @@ def _build_device_info(entry: ConfigEntry, live_data: dict | None = None) -> dic
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up JetKVM from a config entry."""
     host = entry.data["host"]
+    password = entry.data.get("password", "")
 
-    client = JetKVMClient(host=host)
+    client = JetKVMClient(host=host, password=password)
     coordinator = JetKVMCoordinator(hass, client=client)
     await coordinator.async_config_entry_first_refresh()
 

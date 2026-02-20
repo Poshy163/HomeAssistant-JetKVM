@@ -29,7 +29,7 @@
 #   (or: sh /opt/ha-api/uninstall.sh)
 # =====================================================================
 
-API_VERSION="1.0.2"
+API_VERSION="1.1.0"
 API_PORT=8800
 BASE_DIR="/opt/ha-api"
 VERSION_FILE="${BASE_DIR}/version"

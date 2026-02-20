@@ -4,13 +4,14 @@ from homeassistant import config_entries
 import logging
 
 from .const import DOMAIN
-from .client import JetKVMClient, JetKVMConnectionError
+from .client import JetKVMClient, JetKVMConnectionError, JetKVMAuthError
 
 _LOGGER = logging.getLogger(__name__)
 
 DATA_SCHEMA = vol.Schema(
     {
         vol.Required("host"): str,
+        vol.Optional("password", default=""): str,
     }
 )
 
@@ -26,12 +27,26 @@ class JetKVMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             host = user_input["host"]
+            password = user_input.get("password", "")
             _LOGGER.debug("JetKVM setup: attempting connection to %s", host)
 
-            client = JetKVMClient(host=host)
+            client = JetKVMClient(host=host, password=password)
             try:
                 device_info = await client.validate_connection()
                 _LOGGER.debug("JetKVM setup: connection successful, device_info=%s", device_info)
+
+                # Validate password against native API if provided
+                if password:
+                    pw_ok = await client.async_check_password()
+                    if not pw_ok:
+                        _LOGGER.warning("JetKVM setup: password is invalid, video stream will be disabled")
+                        errors["base"] = "invalid_auth"
+                        await client.close()
+                        return self.async_show_form(
+                            step_id="user", data_schema=DATA_SCHEMA, errors=errors
+                        )
+                    _LOGGER.debug("JetKVM setup: password validated for video stream")
+
                 await client.close()
 
                 # Use serial number as unique ID, fall back to hostname
