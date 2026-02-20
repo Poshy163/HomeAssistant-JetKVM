@@ -8,6 +8,7 @@ A custom [Home Assistant](https://www.home-assistant.io/) integration for [JetKV
 ## Features
 
 - **SoC Temperature Sensor** — Monitors the JetKVM device's SoC temperature in °C (polled every 60 seconds)
+- **Uptime, Memory, and Disk Sensors** — Exposes uptime plus memory/disk usage and available capacity from `/device_info`
 - **Live Video Camera** — Native WebRTC stream from JetKVM (requires JetKVM password)
 
 ## Setup
@@ -147,4 +148,3 @@ Expected response: `{"status":"ok"}`
 - Home Assistant 2024.1+
 - JetKVM on your local network
 - One-time SSH access to run the setup script
-

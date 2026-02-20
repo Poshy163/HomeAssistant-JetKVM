@@ -43,11 +43,20 @@
             "last_boot": {
                 "name": "Last boot"
             },
+            "uptime": {
+                "name": "Uptime"
+            },
             "memory_usage": {
                 "name": "Memory usage"
             },
+            "memory_available": {
+                "name": "Memory available"
+            },
             "disk_usage": {
                 "name": "Disk usage"
+            },
+            "disk_available": {
+                "name": "Disk available"
             },
             "cpu_load": {
                 "name": "CPU load (1m)"

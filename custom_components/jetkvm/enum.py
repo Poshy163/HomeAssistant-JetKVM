@@ -35,6 +35,14 @@ SENSOR_DESCRIPTIONS: List[JetKVMSensorDescription] = [
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     JetKVMSensorDescription(
+        key="uptime_seconds",
+        translation_key="uptime",
+        icon="mdi:timer-outline",
+        native_unit_of_measurement="s",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    JetKVMSensorDescription(
         key="mem_used_pct",
         translation_key="memory_usage",
         icon="mdi:memory",
@@ -44,12 +52,28 @@ SENSOR_DESCRIPTIONS: List[JetKVMSensorDescription] = [
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     JetKVMSensorDescription(
+        key="mem_available_kb",
+        translation_key="memory_available",
+        icon="mdi:memory",
+        native_unit_of_measurement="kB",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    JetKVMSensorDescription(
         key="disk_used_pct",
         translation_key="disk_usage",
         icon="mdi:harddisk",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    JetKVMSensorDescription(
+        key="disk_available_kb",
+        translation_key="disk_available",
+        icon="mdi:harddisk",
+        native_unit_of_measurement="kB",
+        state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     JetKVMSensorDescription(
@@ -73,5 +97,4 @@ SENSOR_DESCRIPTIONS: List[JetKVMSensorDescription] = [
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
 ]
-
 
