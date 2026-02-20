@@ -78,7 +78,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_reg.async_get_or_create(config_entry_id=entry.entry_id, **device_info)
 
     # Update device info whenever coordinator refreshes (firmware, api_version, etc.)
-    async def _update_device_on_refresh() -> None:
+    def _update_device_on_refresh() -> None:
         """Update device registry with latest data from the coordinator."""
         live = coordinator.device_info or {}
         if not live:
