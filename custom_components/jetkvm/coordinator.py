@@ -56,6 +56,9 @@ class JetKVMCoordinator(DataUpdateCoordinator):
             if "network_state" in data:
                 result["network_state"] = data["network_state"]
 
+            if "api_version" in data:
+                result["api_version"] = data["api_version"]
+
             return result
 
         except JetKVMError as err:

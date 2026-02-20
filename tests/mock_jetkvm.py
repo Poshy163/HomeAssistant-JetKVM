@@ -46,6 +46,7 @@ async def cgi_device_info(request: web.Request) -> web.Response:
     disk_avail = disk_total - disk_used
     disk_used_pct = round(disk_used / disk_total * 100, 1)
     info = {
+        "api_version": "1.0.0",
         "deviceModel": "JetKVM",
         "serial_number": "18cb28a5431d2479",
         "hostname": "jetkvm-mock",

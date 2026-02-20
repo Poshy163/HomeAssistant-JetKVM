@@ -36,6 +36,9 @@
             },
             "network_state": {
                 "name": "Network state"
+            },
+            "api_version": {
+                "name": "API version"
             }
         }
     }

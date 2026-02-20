@@ -66,6 +66,12 @@ SENSOR_DESCRIPTIONS: List[JetKVMSensorDescription] = [
         icon="mdi:ethernet",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
+    JetKVMSensorDescription(
+        key="api_version",
+        translation_key="api_version",
+        icon="mdi:package-up",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
 ]
 
 

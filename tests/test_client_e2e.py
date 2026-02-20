@@ -35,6 +35,7 @@ async def h_info(r):
     disk_total = 524288
     disk_used = 200000
     return web.json_response({
+        "api_version": "1.0.0",
         "deviceModel": "JetKVM",
         "serial_number": "18cb28a5431d2479",
         "hostname": "jetkvm-mock",
@@ -122,6 +123,7 @@ async def run_tests():
     ok("has load_average", "load_average" in info)
     ok("has mem_used_pct", "mem_used_pct" in info)
     ok("has disk_used_pct", "disk_used_pct" in info)
+    ok("has api_version", info.get("api_version") == "1.0.0", f"got {info.get('api_version')}")
 
     # Test 4: get_all_data (used by coordinator)
     print("--- get_all_data ---")
@@ -131,6 +133,7 @@ async def run_tests():
     ok("has load_average key", "load_average" in data)
     ok("has mem_used_pct key", "mem_used_pct" in data)
     ok("has disk_used_pct key", "disk_used_pct" in data)
+    ok("has api_version key", "api_version" in data)
 
     # Test 5: validate_connection
     print("--- validate_connection ---")

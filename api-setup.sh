@@ -29,8 +29,10 @@
 #   (or: sh /opt/ha-api/uninstall.sh)
 # =====================================================================
 
+API_VERSION="1.0.0"
 API_PORT=8800
 BASE_DIR="/opt/ha-api"
+VERSION_FILE="${BASE_DIR}/version"
 HANDLER_SCRIPT="${BASE_DIR}/handler.sh"
 WATCHDOG_SCRIPT="${BASE_DIR}/watchdog.sh"
 UPDATER_SCRIPT="${BASE_DIR}/updater.sh"
@@ -159,6 +161,7 @@ echo "  nc -e support: $([ "$NC_HAS_E" = "1" ] && echo "yes" || echo "no (will u
 # Create directory
 # =====================================================================
 mkdir -p "$BASE_DIR"
+echo "$API_VERSION" > "$VERSION_FILE"
 
 # =====================================================================
 # Request handler script
@@ -206,6 +209,10 @@ case "$REQUEST_PATH" in
         fi
         ;;
     /device_info)
+        # API version
+        API_VER=$(cat /opt/ha-api/version 2>/dev/null)
+        [ -z "$API_VER" ] && API_VER="unknown"
+
         # Temperature
         TEMP_RAW=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
         TEMP_INT=$((TEMP_RAW / 1000))
@@ -282,8 +289,9 @@ case "$REQUEST_PATH" in
         J_LINK=$(json_escape "$LINK_STATE")
         J_KVER=$(json_escape "$KERNEL_VERSION")
         J_KBUILD=$(json_escape "$KERNEL_BUILD")
+        J_APIVER=$(json_escape "$API_VER")
 
-        BODY="{\"deviceModel\":\"${J_MODEL}\",\"serial_number\":\"${J_SERIAL}\",\"hostname\":\"${J_HOSTNAME}\",\"ip_address\":\"${J_IP}\",\"mac_address\":\"${J_MAC}\",\"network_state\":\"${J_LINK}\",\"kernel_version\":\"${J_KVER}\",\"kernel_build\":\"${J_KBUILD}\",\"temperature\":${TEMP_INT}.${TEMP_FRAC},\"uptime_seconds\":${UPTIME:-0},\"load_average\":${LOAD_AVG:-0},\"mem_total_kb\":${MEM_TOTAL:-0},\"mem_available_kb\":${MEM_AVAIL:-0},\"mem_used_pct\":${MEM_PCT_INT}.${MEM_PCT_FRAC},\"disk_total_kb\":${DISK_TOTAL_KB:-0},\"disk_used_kb\":${DISK_USED_KB:-0},\"disk_available_kb\":${DISK_AVAIL_KB:-0},\"disk_used_pct\":${DISK_PCT_INT}.${DISK_PCT_FRAC}}"
+        BODY="{\"api_version\":\"${J_APIVER}\",\"deviceModel\":\"${J_MODEL}\",\"serial_number\":\"${J_SERIAL}\",\"hostname\":\"${J_HOSTNAME}\",\"ip_address\":\"${J_IP}\",\"mac_address\":\"${J_MAC}\",\"network_state\":\"${J_LINK}\",\"kernel_version\":\"${J_KVER}\",\"kernel_build\":\"${J_KBUILD}\",\"temperature\":${TEMP_INT}.${TEMP_FRAC},\"uptime_seconds\":${UPTIME:-0},\"load_average\":${LOAD_AVG:-0},\"mem_total_kb\":${MEM_TOTAL:-0},\"mem_available_kb\":${MEM_AVAIL:-0},\"mem_used_pct\":${MEM_PCT_INT}.${MEM_PCT_FRAC},\"disk_total_kb\":${DISK_TOTAL_KB:-0},\"disk_used_kb\":${DISK_USED_KB:-0},\"disk_available_kb\":${DISK_AVAIL_KB:-0},\"disk_used_pct\":${DISK_PCT_INT}.${DISK_PCT_FRAC}}"
         ;;
     *)
         BODY='{"error":"not found"}'
