@@ -9,6 +9,9 @@
 # The server is supervised by a watchdog that auto-restarts on crash
 # and uses setsid to survive SSH session disconnects.
 #
+# An auto-updater checks GitHub once per hour and silently re-installs
+# if a new version of this script is available.
+#
 # Usage:
 #   1. SSH into your JetKVM:  ssh root@<jetkvm-ip>
 #   2. Run:
@@ -30,15 +33,29 @@ API_PORT=8800
 BASE_DIR="/opt/ha-api"
 HANDLER_SCRIPT="${BASE_DIR}/handler.sh"
 WATCHDOG_SCRIPT="${BASE_DIR}/watchdog.sh"
+UPDATER_SCRIPT="${BASE_DIR}/updater.sh"
 PID_FILE="${BASE_DIR}/watchdog.pid"
+UPDATER_PID_FILE="${BASE_DIR}/updater.pid"
 LOG_FILE="${BASE_DIR}/server.log"
 UNINSTALL_SCRIPT="${BASE_DIR}/uninstall.sh"
+SETUP_URL="https://raw.githubusercontent.com/Poshy163/HomeAssistant-JetKVM/main/api-setup.sh"
+INSTALLED_HASH_FILE="${BASE_DIR}/.installed_hash"
+UPDATE_INTERVAL=3600
 
 # =====================================================================
 # Uninstall
 # =====================================================================
 if [ "$1" = "--uninstall" ]; then
     echo "=== Uninstalling JetKVM HA API ==="
+
+    # Stop updater
+    if [ -f "$UPDATER_PID_FILE" ]; then
+        UPID=$(cat "$UPDATER_PID_FILE")
+        kill "$UPID" 2>/dev/null
+        sleep 1
+        kill -9 "$UPID" 2>/dev/null
+        rm -f "$UPDATER_PID_FILE"
+    fi
 
     # Stop watchdog (kills nc children too)
     if [ -f "$PID_FILE" ]; then
@@ -60,6 +77,7 @@ if [ "$1" = "--uninstall" ]; then
     # Remove from rc.local (current and legacy entries)
     if [ -f /etc/rc.local ]; then
         sed -i "\|${WATCHDOG_SCRIPT}|d" /etc/rc.local
+        sed -i "\|${UPDATER_SCRIPT}|d" /etc/rc.local
         sed -i "\|/opt/ha-api/server.sh|d" /etc/rc.local
         sed -i "\|/opt/ha-api/start.sh|d" /etc/rc.local
     fi
@@ -75,6 +93,12 @@ echo ""
 # Stop any existing instance
 # =====================================================================
 echo "Stopping any existing instance..."
+if [ -f "$UPDATER_PID_FILE" ]; then
+    UPID=$(cat "$UPDATER_PID_FILE")
+    kill "$UPID" 2>/dev/null
+    sleep 1
+    kill -9 "$UPID" 2>/dev/null
+fi
 if [ -f "$PID_FILE" ]; then
     WPID=$(cat "$PID_FILE")
     kill "$WPID" 2>/dev/null
@@ -216,6 +240,10 @@ BASE_DIR="${BASE_DIR}"
 HANDLER_SCRIPT="${HANDLER_SCRIPT}"
 PID_FILE="${PID_FILE}"
 LOG_FILE="${LOG_FILE}"
+SETUP_URL="${SETUP_URL}"
+INSTALLED_HASH_FILE="${INSTALLED_HASH_FILE}"
+UPDATER_PID_FILE="${UPDATER_PID_FILE}"
+UPDATE_INTERVAL=${UPDATE_INTERVAL}
 CONF
 
 # =====================================================================
@@ -301,8 +329,15 @@ cat << 'UNINST' > "$UNINSTALL_SCRIPT"
 API_PORT=8800
 BASE_DIR="/opt/ha-api"
 PID_FILE="${BASE_DIR}/watchdog.pid"
+UPDATER_PID_FILE="${BASE_DIR}/updater.pid"
 WATCHDOG_SCRIPT="${BASE_DIR}/watchdog.sh"
+UPDATER_SCRIPT="${BASE_DIR}/updater.sh"
 
+if [ -f "$UPDATER_PID_FILE" ]; then
+    kill $(cat "$UPDATER_PID_FILE") 2>/dev/null
+    sleep 1
+    kill -9 $(cat "$UPDATER_PID_FILE") 2>/dev/null
+fi
 if [ -f "$PID_FILE" ]; then
     kill $(cat "$PID_FILE") 2>/dev/null
     sleep 1
@@ -314,12 +349,118 @@ done
 rm -rf "$BASE_DIR"
 if [ -f /etc/rc.local ]; then
     sed -i "\|${WATCHDOG_SCRIPT}|d" /etc/rc.local
+    sed -i "\|${UPDATER_SCRIPT}|d" /etc/rc.local
     sed -i "\|/opt/ha-api/server.sh|d" /etc/rc.local
     sed -i "\|/opt/ha-api/start.sh|d" /etc/rc.local
 fi
 echo "Uninstalled."
 UNINST
 chmod +x "$UNINSTALL_SCRIPT"
+
+# =====================================================================
+# Save hash of the currently installed script for update detection
+# =====================================================================
+# Use md5sum if available, otherwise sha256sum, otherwise cksum
+if command -v md5sum >/dev/null 2>&1; then
+    HASH_CMD="md5sum"
+elif command -v sha256sum >/dev/null 2>&1; then
+    HASH_CMD="sha256sum"
+else
+    HASH_CMD="cksum"
+fi
+
+# Hash ourselves (the setup script that was just run)
+SELF_SCRIPT="$0"
+if [ -f "$SELF_SCRIPT" ]; then
+    $HASH_CMD "$SELF_SCRIPT" | awk '{print $1}' > "$INSTALLED_HASH_FILE"
+fi
+
+# =====================================================================
+# Auto-updater script — checks GitHub once per hour, re-runs if changed
+# =====================================================================
+cat << 'UPDATER' > "$UPDATER_SCRIPT"
+#!/bin/sh
+# Auto-updater for JetKVM HA API
+# Checks for a new version of api-setup.sh every UPDATE_INTERVAL seconds.
+# If a new version is found, downloads and re-runs it automatically.
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "${SCRIPT_DIR}/config.sh"
+
+log() {
+    # Reuse the server log file, keep it trimmed
+    if [ -f "$LOG_FILE" ]; then
+        LOG_SIZE=$(wc -c < "$LOG_FILE" 2>/dev/null || echo 0)
+        if [ "$LOG_SIZE" -gt 50000 ]; then
+            tail -c 25000 "$LOG_FILE" > "${LOG_FILE}.tmp"
+            mv "${LOG_FILE}.tmp" "$LOG_FILE"
+        fi
+    fi
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [updater] $1" >> "$LOG_FILE"
+}
+
+# Write our PID
+echo $$ > "$UPDATER_PID_FILE"
+
+cleanup() {
+    log "Updater stopping (signal received)"
+    rm -f "$UPDATER_PID_FILE"
+    exit 0
+}
+trap cleanup INT TERM HUP
+
+# Determine hash command
+if command -v md5sum >/dev/null 2>&1; then
+    HASH_CMD="md5sum"
+elif command -v sha256sum >/dev/null 2>&1; then
+    HASH_CMD="sha256sum"
+else
+    HASH_CMD="cksum"
+fi
+
+log "Updater starting (PID $$) — checking every ${UPDATE_INTERVAL}s"
+
+while true; do
+    sleep "$UPDATE_INTERVAL"
+
+    log "Checking for updates..."
+
+    # Download latest script to a temp file
+    TMP_SCRIPT="/tmp/api-setup-update.sh"
+    rm -f "$TMP_SCRIPT"
+
+    wget --no-check-certificate -qO "$TMP_SCRIPT" "$SETUP_URL" 2>/dev/null
+    if [ $? -ne 0 ] || [ ! -s "$TMP_SCRIPT" ]; then
+        log "Update check failed: could not download $SETUP_URL"
+        rm -f "$TMP_SCRIPT"
+        continue
+    fi
+
+    # Compare hash of downloaded script with installed hash
+    NEW_HASH=$($HASH_CMD "$TMP_SCRIPT" | awk '{print $1}')
+    OLD_HASH=""
+    if [ -f "$INSTALLED_HASH_FILE" ]; then
+        OLD_HASH=$(cat "$INSTALLED_HASH_FILE")
+    fi
+
+    if [ "$NEW_HASH" = "$OLD_HASH" ]; then
+        log "No update available (hash unchanged)"
+        rm -f "$TMP_SCRIPT"
+        continue
+    fi
+
+    log "Update found! Old=$OLD_HASH New=$NEW_HASH — applying..."
+
+    # Run the new setup script (it will stop existing watchdog/updater, reinstall, and restart everything)
+    sh "$TMP_SCRIPT" 2>&1 | while IFS= read -r line; do log "  $line"; done
+    rm -f "$TMP_SCRIPT"
+
+    log "Update applied — exiting old updater (new one should be running)"
+    rm -f "$UPDATER_PID_FILE"
+    exit 0
+done
+UPDATER
+chmod +x "$UPDATER_SCRIPT"
 
 # =====================================================================
 # Persist across reboots via /etc/rc.local
@@ -333,9 +474,13 @@ fi
 sed -i "\|/opt/ha-api/server.sh|d" /etc/rc.local
 sed -i "\|/opt/ha-api/start.sh|d" /etc/rc.local
 sed -i "\|${WATCHDOG_SCRIPT}|d" /etc/rc.local
+sed -i "\|${UPDATER_SCRIPT}|d" /etc/rc.local
 
 # Add watchdog with setsid (fully detached from terminal)
 sed -i "/^exit 0/i (sleep 3 && setsid ${WATCHDOG_SCRIPT} </dev/null >/dev/null 2>&1 &)" /etc/rc.local
+
+# Add auto-updater with setsid (fully detached from terminal)
+sed -i "/^exit 0/i (sleep 10 && setsid ${UPDATER_SCRIPT} </dev/null >/dev/null 2>&1 &)" /etc/rc.local
 
 # =====================================================================
 # Start the server now
@@ -344,6 +489,7 @@ echo ""
 echo "Starting API server on port ${API_PORT}..."
 
 setsid "$WATCHDOG_SCRIPT" </dev/null >/dev/null 2>&1 &
+setsid "$UPDATER_SCRIPT" </dev/null >/dev/null 2>&1 &
 sleep 2
 
 # =====================================================================
@@ -381,6 +527,7 @@ if [ "$RUNNING" = "1" ]; then
     echo "  - Survive SSH session disconnect"
     echo "  - Start automatically on boot"
     echo "  - Timeout idle connections after 5 seconds"
+    echo "  - Auto-update from GitHub every hour"
     echo ""
     echo "To uninstall:  sh ${UNINSTALL_SCRIPT}"
     echo "To view logs:  cat ${LOG_FILE}"
