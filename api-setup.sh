@@ -9,8 +9,8 @@
 # The server is supervised by a watchdog that auto-restarts on crash
 # and uses setsid to survive SSH session disconnects.
 #
-# An auto-updater checks GitHub every 5 minutes and silently re-installs
-# if a newer version of this script is available.
+# An auto-updater checks GitHub on a fixed interval (default: hourly)
+# and silently re-installs if a newer version of this script is available.
 #
 # Usage:
 #   1. SSH into your JetKVM:  ssh root@<jetkvm-ip>
@@ -21,6 +21,7 @@
 #
 # Endpoints (after install):
 #   http://<jetkvm-ip>:8800/health
+#   http://<jetkvm-ip>:8800/version
 #   http://<jetkvm-ip>:8800/temperature
 #   http://<jetkvm-ip>:8800/device_info
 #
@@ -29,7 +30,7 @@
 #   (or: sh /opt/ha-api/uninstall.sh)
 # =====================================================================
 
-API_VERSION="1.1.0"
+API_VERSION="1.1.1"
 API_PORT=8800
 BASE_DIR="/opt/ha-api"
 VERSION_FILE="${BASE_DIR}/version"
@@ -42,6 +43,14 @@ LOG_FILE="${BASE_DIR}/server.log"
 UNINSTALL_SCRIPT="${BASE_DIR}/uninstall.sh"
 SETUP_URL="https://raw.githubusercontent.com/Poshy163/HomeAssistant-JetKVM/main/api-setup.sh"
 UPDATE_INTERVAL=3600
+
+# Validate updater interval (seconds)
+case "$UPDATE_INTERVAL" in
+    ''|*[!0-9]*) UPDATE_INTERVAL=3600 ;;
+esac
+if [ "$UPDATE_INTERVAL" -lt 60 ] 2>/dev/null; then
+    UPDATE_INTERVAL=60
+fi
 
 # =====================================================================
 # Uninstall
@@ -185,6 +194,11 @@ fi
 
 # Extract path
 REQUEST_PATH=$(echo "$REQUEST_LINE" | awk '{print $2}')
+# Ignore query string (BusyBox-friendly parameter expansion)
+REQUEST_PATH=${REQUEST_PATH%%\?*}
+
+STATUS_CODE=200
+STATUS_TEXT="OK"
 
 # Consume remaining headers (read until blank line, with timeout)
 while read -t 2 -r header 2>/dev/null; do
@@ -206,6 +220,12 @@ case "$REQUEST_PATH" in
             TEMP_FRAC=$(( (TEMP_RAW % 1000) / 100 ))
             BODY="{\"temperature\":${TEMP_INT}.${TEMP_FRAC}}"
         fi
+        ;;
+    /version)
+        API_VER=$(cat /opt/ha-api/version 2>/dev/null)
+        [ -z "$API_VER" ] && API_VER="unknown"
+        J_APIVER=$(json_escape "$API_VER")
+        BODY="{\"api_version\":\"${J_APIVER}\"}"
         ;;
     /device_info)
         # API version
@@ -293,13 +313,15 @@ case "$REQUEST_PATH" in
         BODY="{\"api_version\":\"${J_APIVER}\",\"deviceModel\":\"${J_MODEL}\",\"serial_number\":\"${J_SERIAL}\",\"hostname\":\"${J_HOSTNAME}\",\"ip_address\":\"${J_IP}\",\"mac_address\":\"${J_MAC}\",\"network_state\":\"${J_LINK}\",\"kernel_version\":\"${J_KVER}\",\"kernel_build\":\"${J_KBUILD}\",\"temperature\":${TEMP_INT}.${TEMP_FRAC},\"uptime_seconds\":${UPTIME:-0},\"load_average\":${LOAD_AVG:-0},\"mem_total_kb\":${MEM_TOTAL:-0},\"mem_available_kb\":${MEM_AVAIL:-0},\"mem_used_pct\":${MEM_PCT_INT}.${MEM_PCT_FRAC},\"disk_total_kb\":${DISK_TOTAL_KB:-0},\"disk_used_kb\":${DISK_USED_KB:-0},\"disk_available_kb\":${DISK_AVAIL_KB:-0},\"disk_used_pct\":${DISK_PCT_INT}.${DISK_PCT_FRAC}}"
         ;;
     *)
+        STATUS_CODE=404
+        STATUS_TEXT="Not Found"
         BODY='{"error":"not found"}'
         ;;
 esac
 
 CONTENT_LENGTH=$(echo -n "$BODY" | wc -c)
 
-printf "HTTP/1.0 200 OK\r\n"
+printf "HTTP/1.0 %s %s\r\n" "$STATUS_CODE" "$STATUS_TEXT"
 printf "Content-Type: application/json\r\n"
 printf "Content-Length: %d\r\n" "$CONTENT_LENGTH"
 printf "Access-Control-Allow-Origin: *\r\n"
@@ -438,7 +460,7 @@ UNINST
 chmod +x "$UNINSTALL_SCRIPT"
 
 # =====================================================================
-# Auto-updater script — checks GitHub every 5 minutes, re-runs if newer
+# Auto-updater script — checks GitHub on UPDATE_INTERVAL, re-runs if newer
 # =====================================================================
 cat << 'UPDATER' > "$UPDATER_SCRIPT"
 #!/bin/sh
@@ -597,6 +619,7 @@ if [ "$RUNNING" = "1" ]; then
     echo ""
     echo "Endpoints:"
     echo "  http://${IP}:${API_PORT}/health"
+    echo "  http://${IP}:${API_PORT}/version"
     echo "  http://${IP}:${API_PORT}/temperature"
     echo "  http://${IP}:${API_PORT}/device_info"
     echo ""
@@ -605,7 +628,7 @@ if [ "$RUNNING" = "1" ]; then
     echo "  - Survive SSH session disconnect"
     echo "  - Start automatically on boot"
     echo "  - Timeout idle connections after 5 seconds"
-    echo "  - Auto-update from GitHub every 5 minutes"
+    echo "  - Auto-update from GitHub every ${UPDATE_INTERVAL} seconds"
     echo ""
     echo "To uninstall:  sh ${UNINSTALL_SCRIPT}"
     echo "To view logs:  cat ${LOG_FILE}"
